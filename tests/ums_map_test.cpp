@@ -171,7 +171,27 @@ int main(int argc, char** argv) {
 	CHECK(ran_ok, "300 frames run without aborting (aborted at %d: %s)",
 		aborted_frame, abort_msg.c_str());
 
-	// --- Test 5: the players that own units stay the same ----------------
+	// --- Test 5: unit_counts minus map revealers equals real units -------
+	// StarEdit "map revealer" units are stored in UNIT records, are created by
+	// the engine, and live in their own list. They must NOT be mistaken for
+	// missing army: on M&M_v_ZealDrag.scx slot 1 reports 137 declared units of
+	// which 123 are revealers and only 14 are real (section 41 of the Atlantis
+	// investigation log). This check pins that arithmetic.
+	for (int o = 0; o != 8; ++o) {
+		int declared = 0;
+		for (int t = 0; t != 228; ++t) declared += st.unit_counts[o][(UnitTypes)t];
+		int revealers = 0;
+		for (auto& v : st.map_revealer_units) if (v.owner == o) ++revealers;
+		if (!declared) continue;
+		CHECK(declared >= revealers,
+			"slot %d: declared (%d) >= revealers (%d)", o, declared, revealers);
+		if (revealers) {
+			printf("info slot %d: %d declared = %d revealers + %d real\n",
+				o, declared, revealers, declared - revealers);
+		}
+	}
+
+	// --- Test 6: the players that own units stay the same ----------------
 	// Guards the bot-slot problem: if a change silently empties the players
 	// that own units, a bot joined there sees nothing. Only checked when the
 	// caller says which map this is.
