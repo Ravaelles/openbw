@@ -242,6 +242,19 @@ struct state_base_copyable {
 
 	int trigger_timer;
 	std::array<a_vector<running_trigger>, 8> running_triggers;
+	// Deaths per player and unit type, needed by trigger conditions 15/16/21/23.
+	// StarCraft's "Deaths" condition counts units the player LOST, grouped by
+	// the unit id field (including the special 229/230/231/232 groups).
+	std::array<type_indexed_array<int, UnitTypes>, 12> unit_deaths;
+	// The map's 256 named switches (chunk SWNM provides the names). Trigger
+	// condition 4 reads them, action 5 writes them. Previously condition 4 was
+	// hardcoded to true and there was no action 5 at all, so every
+	// switch-driven map ran the "switch on" branch unconditionally.
+	std::array<bool, 256> switches{};
+	// Actions 105 (run AI script at location) seen but not executed; the AI
+	// script interpreter is not implemented, and this counter keeps the omission
+	// observable instead of silent.
+	int skipped_ai_script_actions = 0;
 	std::array<int, 12> trigger_wait_timers;
 	std::array<bool, 12> trigger_waiting;
 
@@ -2628,6 +2641,7 @@ struct state_functions {
 			remove_queued_order(u, &u->order_queue.front());
 		}
 		set_unit_order(u, get_order_type(Orders::Die), u->order_target.pos);
+		record_unit_death(u);
 		on_kill_unit(u);
 	}
 
@@ -13143,6 +13157,11 @@ struct state_functions {
 					}
 				}
 				if (execute_now) {
+					bool has_action = false;
+					for (auto& a : t.actions) {
+						if (a.type != 0) { has_action = true; break; }
+					}
+					if (!has_action) continue;
 					rt.current_action_index = 0;
 					execute_trigger(ets, i, rt, t);
 					any_triggers_executed = true;
@@ -18884,6 +18903,33 @@ struct state_functions {
 		return r;
 	}
 
+	// StarEdit lets a condition target a pseudo-unit instead of one type:
+	//   229 any unit, 230 men, 231 buildings, 232 factories.
+	// Kept as a pure predicate so a new group is one table entry (OCP), not
+	// another branch inside a counting loop (previously a 5-way if-chain).
+	static bool unit_id_matches_group(const unit_type_t* ut, int unit_id) {
+		switch (unit_id) {
+		case 229: return true;
+		case 230: return (ut->group_flags & GroupFlags::Men) != 0;
+		case 231: return (ut->group_flags & GroupFlags::Building) != 0;
+		case 232: return (ut->group_flags & GroupFlags::Factory) != 0;
+		default: return (int)ut->id == unit_id;
+		}
+	}
+
+	// One responsibility: how many units matching `unit_id` the player lost.
+	// Uses unit_id_matches_group() so "what counts" and "sum the table" are
+	// separate decisions.
+	int trigger_death_count(int player, int unit_id) const {
+		if (player < 0 || player >= 12) return 0;
+		auto& deaths = st.unit_deaths[player];
+		int r = 0;
+		for (size_t i = 0; i != 228; ++i) {
+			if (unit_id_matches_group(get_unit_type((UnitTypes)i), unit_id)) r += deaths[(UnitTypes)i];
+		}
+		return r;
+	}
+
 	bool test_trigger_condition(const trigger::condition& c, int owner) const {
 		switch (c.type) {
 		case 2: // command
@@ -18902,6 +18948,14 @@ struct state_functions {
 			error("unknown trigger condition %d\n", c.type);
 			return false;
 		}
+	}
+
+	// Recorded in kill_unit(), i.e. for every unit that actually dies, so the
+	// "Deaths" conditions see losses no matter how they were caused (combat,
+	// trigger kill, self-destruct).
+	void record_unit_death(const unit_t* u) {
+		if (u->owner >= 12) return;
+		++st.unit_deaths[u->owner][u->unit_type->id];
 	}
 
 	unit_t* trigger_create_unit(const unit_type_t* unit_type, xy pos, int owner) {
@@ -19300,8 +19354,16 @@ struct state_functions {
 				set_unit_resources(u, a.group2_n);
 			}
 			return true;
+		case 5: { // set switch: a.group_n is the switch index, a.num_n on/off
+			int index = a.group_n;
+			if (index >= 0 && index < 256) st.switches[index] = a.num_n != 0;
+			return true;
+		}
 		case 105: // run ai script at location (map "AI scripts" used by some UMS maps)
-			// unit ai scripts are not simulated; ignore instead of aborting the game
+			// The AI-script interpreter is not implemented. Do not abort, but do
+			// let the game report it, so "map used scripts and they were ignored"
+			// is observable.
+			++st.skipped_ai_script_actions;
 			return true;
 		default:
 			error("unknown trigger action %d", a.type);
@@ -21752,7 +21814,13 @@ struct game_load_functions : state_functions {
 			}
 			for (auto& t : game_st.triggers) {
 				for (int i = 0; i != 8; ++i) {
-					if (st.players[i].controller != player_t::controller_occupied) continue;
+					// Playable slots after the UMS remap are controller_occupied
+					// (human) and controller_computer_game (AI). Matching only
+					// controller_occupied dropped every trigger on maps whose
+					// featured players are "Computer" in StarEdit - measured:
+					// 1Drag_v_1Zeal slots 1-3, 0 -> 5 running triggers per slot.
+					int c = st.players[i].controller;
+					if (c != player_t::controller_occupied && c != player_t::controller_computer_game) continue;
 					if (!t.enabled[i] && !t.enabled.at(17 + st.players[i].force) && !t.enabled[17]) continue;
 					st.running_triggers[i].emplace_back();
 					auto& rt = st.running_triggers[i].back();
