@@ -6,6 +6,158 @@ the test named in the entry; entries marked OPEN are recorded but untouched.
 
 Each entry: what, how to reproduce, effect, and the fix (or why not).
 
+# Bugs and non-obvious behaviour
+
+Two parts:
+
+1. **Non-obvious facts** (below) - things this engine does that surprise you
+   when you first read or drive it. Not defects, but they cost time if unknown.
+2. **Bugs** - defects found by the tests, marked FIXED or OPEN.
+
+Everything here was measured on the two reference maps
+(`1Drag_v_1Zeal.scm`, `M&M_v_ZealDrag.scx`) unless stated otherwise.
+
+---
+
+## Non-obvious facts (read this first)
+
+### N01 - Map revealers are real units, in a third list
+
+`Special_Map_Revealer` (id 101) units are StarEdit helpers. They are ordinary
+`UNIT` records, so `unit_counts[owner][101]` counts them, but the engine keeps
+them in `state::map_revealer_units`, **not** in `visible_units` and not in
+`hidden_units`. Measured: `1Drag` has 109 visible, 0 hidden, **301 revealers**;
+`M&M` has 189 visible, 0 hidden, 266 revealers. Any "how many units does this
+player have" question must pick the right list, and a slot can report 140
+"units" while owning zero army.
+
+### N02 - `unit_counts` includes revealers
+
+Consequence of N01: BWAPI's participating-player test reads `unit_counts`, so a
+slot with only revealers looks present. The slot report separates them; the
+participation test did not (fixed for revealers only).
+
+### N03 - MRGN has 255 regions, not 256
+
+StarEdit documents 256 locations. `MRGN` in both reference maps is 5100 bytes =
+**255** records, and the engine stores 255 (`locations=255`). Location index 256
+is therefore always unusable, and a map that expects the last location to exist
+silently gets the previous one.
+
+### N04 - The engine loads only Melee.trg's triggers, never the map's
+
+`triggers=6` for `1Drag` and `5` for `M&M` after loading, exactly the Melee.trg
+set. The map's own `TRIG` chunk (86400 bytes = 36 records in `1Drag`) is parsed
+but the resulting triggers never reach `game_state::triggers`. Reported here for
+the record; the trigger tests work against whatever is loaded.
+
+### N05 - Trigger attachment is per playable controller, not per "human"
+
+After the UMS remap a map's "Computer" players are `controller_computer_game`,
+not `controller_occupied`. Matching only the latter silently drops **every**
+trigger on maps whose featured players are Computer in StarEdit - measured
+0 vs 5 running triggers per slot on `1Drag`.
+
+### N06 - A map can end the game on purpose after N seconds
+
+`1Drag` declares `Elapsed time 300 s -> Defeat`. At the trigger tick rate that
+is frame 312. "The game stopped" therefore needs a diagnostic before anyone
+suspects the engine; see BUG-4.
+
+### N07 - `callOnFrame()` blocks in `read()`
+
+The server's per-frame handshake writes byte 2 and then **blocks** waiting for
+byte 1 from the client. Calling it twice in one update sends a second 2 before
+the client processed the first, and the match freezes. Exactly one call per
+update, always after `updateSharedMemory()`.
+
+### N08 - The client needs the shared segment to stay mapped
+
+Unlinking `/dev/shm/bwapi_shared_memory_<pid>` after accept keeps the server's
+mapping alive but makes the object unopenable for the client, which then sees
+`playerCount = 0`. That was one of the "no units" reports.
+
+### N09 - `playerCount` and events are only published when a client is attached
+
+`updateSharedMemory()` used to run only in the attached branch, so a client
+attaching mid-game started from `playerCount = 0` and an empty event queue.
+Events were additionally cleared at the end of every update, so MatchStart
+could never be delivered.
+
+### N10 - `hitpoints` is fixed point (fp8)
+
+`hitpoints.raw_value == 25600` means **100** hp. Comparing against 100 directly
+is a common mistake; use `integer_part()`.
+
+### N11 - Costs are BroodWar costs
+
+The `units.dat` in the data files is BroodWar: Zergling is **50/0**, not 25/0.
+Zealot 100/0, Dragoon 125/50, Marine 50/0 all match.
+
+### N12 - Four building types have no build time
+
+`flag_building` is set on more types than have a `build_time`. Four special
+types (the preplaced/special buildings) legitimately have 0. "Every building has
+a build time" is a wrong assertion; the test allows up to five exceptions.
+
+### N13 - `supply_used` / `supply_available` are per race
+
+Three entries per player, not one scalar. Reading `[player]` gives an array and
+silently compares pointers if you are not careful.
+
+### N14 - `unit_counts` can exceed what exists
+
+Declared counts include units that never get placed (revealers, but also
+records that fail placement). The slot report distinguishes "declared",
+"visible" and "revealers" for this reason.
+
+### N15 - A "Waiting" state machine has two owners
+
+The wait action sets `trigger_waiting`, but only `process_triggers()` clears it
+and advances `trigger_wait_timers`. Testing the action in isolation therefore
+cannot exercise the resume path - see BUG-7.
+
+### N17 - `shield_points` in the type table is a maximum, and it is non-zero for non-Protoss
+
+`unit_type_t::shield_points` is the maximum shields. Terran and Zerg types carry
+a **non-zero** value (measured: Marine = 100, Zergling = 100) because the field
+is a data slot, not a capability flag. Whether a unit has shields at all is
+decided by the Protoss race / unit flags, not by this number. Do not use
+`shield_points == 0` to detect "no shields".
+
+### N18 - `unit_t::hp` and `unit_t::shield_points` are fp8, the type table's are integers
+
+`unit_t::hp.raw_value == 25600` is 100 hp; `unit_type_t::hitpoints` is the same
+value in fp8 too, but `unit_type_t::shield_points` is a plain `int`. Comparing
+the two requires `integer_part()` on one side. Mixing them silently compares
+fixed-point raw values with integer hit points.
+
+### N19 - Group 231 (buildings) and 232 (factories) overlap by design
+
+Twelve unit types match **both** `Men/Buildings/Factory` predicates: 106-116
+(Terran factories) and 130-133, 154, 155, 160, 167 (Zerg/Protoss production
+buildings). A factory is also a building. Any code that assumes the three group
+ids are disjoint will double-count those types; `trigger_death_count()` sums per
+type, so it counts each death once, but a filter written as
+`if (matches buildings) ... else if (matches factory) ...` silently drops them.
+
+### N20 - `MRGN` is 255 entries with mostly empty regions
+
+The chunk is fixed-size: 255 records. Only the first N are real; the rest are
+zeroed `(0,0)-(0,0)`. Measured on `1Drag`: **63 real regions, 192 empty**. The
+engine stores all of them, so `locations.size()` is 255 and "region 200" exists
+but has zero area. A trigger that references an unused location index silently
+matches an empty area.
+
+### N16 - `get_unit(index)` vs `get_unit(unit_id_32)`
+
+The raw overload indexes `units_container` directly; the id overload converts
+through `id.index()` and subtracts one. Passing `unit->index` into the id
+overload does not round-trip (BUG-3). Always use the raw overload with
+`unit->index`.
+
+---
+
 ---
 
 ## BUG-1 - Condition 4 (switch) ignores switch state in this tree
