@@ -18896,6 +18896,8 @@ struct state_functions {
 			return trigger_count_comparison(c, trigger_opponent_count(owner, c.group));
 		case 22: // always
 			return true;
+		case 4: // switch (map-defined switches are not simulated); treated as enabled
+			return true;
 		default:
 			error("unknown trigger condition %d\n", c.type);
 			return false;
@@ -19297,6 +19299,9 @@ struct state_functions {
 				if (!unit_is_at_elevation_flags(u, st.locations[a.location - 1].elevation_flags)) continue;
 				set_unit_resources(u, a.group2_n);
 			}
+			return true;
+		case 105: // run ai script at location (map "AI scripts" used by some UMS maps)
+			// unit ai scripts are not simulated; ignore instead of aborting the game
 			return true;
 		default:
 			error("unknown trigger action %d", a.type);
@@ -21617,6 +21622,7 @@ struct game_load_functions : state_functions {
 				};
 				if (!should_create_units_for_this_player()) continue;
 				if (!use_map_settings && !is_neutral_unit()) continue;
+				if (valid_flags & 4) continue; // unit was placed in StarEdit but disabled for gameplay
 				if (use_map_settings) {
 					if (owner < 8 && setup_info.create_melee_units_for_player[owner] && ~unit_type->group_flags & GroupFlags::Neutral) continue;
 				}
@@ -21688,6 +21694,7 @@ struct game_load_functions : state_functions {
 
 		tag_funcs["MRGN"] = [&](data_reader_le r) {
 			// 64 or 256 entries
+			st.locations.clear();
 			while (r.left()) {
 				int left = r.get<int32_t>();
 				int top = r.get<int32_t>();
