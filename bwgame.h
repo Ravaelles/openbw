@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <cstdio>
 #include <cstdlib>
 #include <cmath>
 #include <functional>
@@ -255,6 +256,15 @@ struct state_base_copyable {
 	// script interpreter is not implemented, and this counter keeps the omission
 	// observable instead of silent.
 	int skipped_ai_script_actions = 0;
+	// Unknown trigger conditions/actions seen but not executed (BUG-5): one
+	// unsupported entry used to abort the whole simulation via error().
+	// Conditions evaluate false (the trigger cannot prove it should fire)
+	// and actions are skipped; both are counted here and the first
+	// occurrence is logged, so the omission is observable instead of
+	// silent - and instead of fatal.
+	int skipped_trigger_conditions = 0;
+	int skipped_trigger_actions = 0;
+	bool unknown_trigger_logged = false;
 	std::array<int, 12> trigger_wait_timers;
 	std::array<bool, 12> trigger_waiting;
 
@@ -636,6 +646,9 @@ struct state_functions {
 		play_sound(id, xy(), nullptr, add_race_index);
 	}
 
+	// Raw container index (0-based). See get_unit_id() below for building
+	// the id-typed lookup key: stuffing a raw index into a unit_id_t
+	// skips the +1 and will not round-trip (BUG-3).
 	unit_t* get_unit(size_t index) const {
 		unit_t* u = st.units_container.try_get(index);
 		if (!u) return nullptr;
@@ -653,6 +666,8 @@ struct state_functions {
 		return u;
 	}
 
+	// Id-typed lookup key (1-based inside; 0 means null). Build it with
+	// get_unit_id()/get_unit_id_32(), never from u->index directly.
 	unit_id get_unit_id(const unit_t* u) const {
 		if (!u) return unit_id{};
 		return unit_id(u->index + 1, u->unit_id_generation % (1u << 5));
@@ -18942,10 +18957,17 @@ struct state_functions {
 			return trigger_count_comparison(c, trigger_opponent_count(owner, c.group));
 		case 22: // always
 			return true;
-		case 4: // switch (map-defined switches are not simulated); treated as enabled
-			return true;
+		case 4: { // switch: on if the map's switch `location` is set
+			int index = c.location;
+			if (index < 0 || index >= 256) return false;
+			return st.switches[index];
+		}
 		default:
-			error("unknown trigger condition %d\n", c.type);
+			++st.skipped_trigger_conditions;
+			if (!st.unknown_trigger_logged) {
+				st.unknown_trigger_logged = true;
+				std::fprintf(stderr, "bwgame: unknown trigger condition %d (counted, trigger does not fire)\n", c.type);
+			}
 			return false;
 		}
 	}
@@ -19099,11 +19121,13 @@ struct state_functions {
 		case 1: // victory
 			if (st.players[owner].controller == player_t::controller_occupied || st.players[owner].controller == player_t::controller_computer_game) {
 				ets.victory_state[owner] = 3;
+				std::fprintf(stderr, "bwgame: trigger victory: frame %d slot %d\n", (int)st.current_frame, owner);
 			}
 			return true;
 		case 2: // defeat
 			if (st.players[owner].controller == player_t::controller_occupied || st.players[owner].controller == player_t::controller_computer_game) {
 				ets.victory_state[owner] = 2;
+				std::fprintf(stderr, "bwgame: trigger defeat: frame %d slot %d\n", (int)st.current_frame, owner);
 			}
 			return true;
 		case 3: // preserve trigger
@@ -19366,8 +19390,12 @@ struct state_functions {
 			++st.skipped_ai_script_actions;
 			return true;
 		default:
-			error("unknown trigger action %d", a.type);
-			return false;
+			++st.skipped_trigger_actions;
+			if (!st.unknown_trigger_logged) {
+				st.unknown_trigger_logged = true;
+				std::fprintf(stderr, "bwgame: unknown trigger action %d (counted, action skipped)\n", a.type);
+			}
+			return true;
 		}
 	}
 

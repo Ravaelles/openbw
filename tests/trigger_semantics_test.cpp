@@ -1,4 +1,4 @@
-// Twenty focused tests for the trigger engine and the state it touches.
+// Twenty-one focused tests for the trigger engine and the state it touches.
 //
 // Scope: the parts that broke in practice or that a map depends on and that
 // nothing else checks. Engine-only (bwgame.h linked directly): no BWAPI, no
@@ -265,6 +265,17 @@ int main(int argc, char** argv) {
 		}
 		test("T20", "map dimensions and start locations sane", dims && starts > 0,
 			fmt("%dx%d tiles, %d valid starts", st.game->map_tile_width, st.game->map_tile_height, starts));
+	}
+
+	// T21 - an unknown condition does not fire and is counted, not fatal
+	// (used to abort the whole simulation via error()).
+	{
+		int before = st.skipped_trigger_conditions;
+		auto c = make_condition(99, 0);
+		bool fired = false;
+		for (int p = 0; p != 8; ++p) fired = fired || funcs.test_trigger_condition(c, p);
+		test("T21", "unknown condition is false and counted", !fired && st.skipped_trigger_conditions == before + 8,
+			fmt("fired=%d skipped=%d", (int)fired, st.skipped_trigger_conditions - before));
 	}
 
 	printf("\n%d/%d passed\n", total - failures, total);

@@ -1,4 +1,4 @@
-// Twenty tests for trigger ACTIONS and the state they mutate.
+// Twenty-one focused tests for trigger ACTIONS and the state they mutate.
 //
 // Companion to trigger_semantics_test.cpp (which covers conditions). Same
 // rules: engine-only, no BWAPI, no bot, no match. A failing check is a fact
@@ -336,6 +336,16 @@ int main(int argc, char** argv) {
 		try { for (int i = 0; i != 60; ++i) f.player.next_frame(); }
 		catch (std::exception& e) { ok = false; why = e.what(); }
 		test("A20", "simulation continues after actions", ok, why);
+	}
+
+	// A21 - an unknown action is skipped and counted, not fatal (used to
+	// abort the whole simulation via error()).
+	{
+		game_load_functions::execute_trigger_struct ets; trigger t{}; running_trigger rt{}; rt.t = &t;
+		int before = st.skipped_trigger_actions;
+		bool ok = f.lf.execute_trigger_action(ets, 1, rt, rt.actions[0], make_action(99));
+		test("A21", "unknown action is skipped and counted", ok && st.skipped_trigger_actions == before + 1,
+			fmt("ok=%d skipped=%d", (int)ok, st.skipped_trigger_actions - before));
 	}
 
 	printf("\n%d/%d passed\n", total - failures, total);

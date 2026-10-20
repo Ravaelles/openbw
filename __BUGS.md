@@ -1,14 +1,17 @@
 # Bugs found while writing tests
 
 Found by `tests/trigger_semantics_test.cpp` and by reading the engine while
-writing it. Per instruction, **nothing here was fixed** - this file only records
-what is broken and how it was observed.
+writing it. Entries marked FIXED were repaired in this tree and verified by
+the test named in the entry; entries marked OPEN are recorded but untouched.
 
-Each entry: what, how to reproduce, effect, and a suggested fix (not applied).
+Each entry: what, how to reproduce, effect, and the fix (or why not).
 
 ---
 
 ## BUG-1 - Condition 4 (switch) ignores switch state in this tree
+
+**Status: FIXED** (this tree now matches the harness: condition 4 reads
+`st.switches`, out-of-range is false; T12/T13 green on both default maps).
 
 **Observed:** `tests/trigger_semantics_test.cpp` T12 and T13 fail on
 `1Drag_v_1Zeal.scm`:
@@ -44,6 +47,16 @@ see BUG-2.
 
 ## BUG-2 - Engine copies drifted: harness has fixes this tree does not
 
+**Status: NARROWED, deliberately not closed.** The trigger-semantics
+direction is now ported here (BUG-1, BUG-5, switch/death/attachment
+fixes verified by T12/T13 and `tests/run.sh`). The remaining diff
+(~200 lines) goes both ways and includes the harness's own uncommitted
+engine work (build-queue helpers, visibility checks) that must not be
+overwritten or blind-ported - it belongs to the harness track until
+their done-signal. In particular the harness was NOT reinstalled from
+this tree, on purpose. The check-before-build suggestion stays open
+for the harness owner.
+
 **Observed:** compiling the same test against
 `/sc-ai/OpenBW/openbw/bwgame.h` and against
 `/sc-ai/StardustDevEnvironment/3rdparty/openbw/openbw/bwgame.h` gives different
@@ -65,6 +78,15 @@ that both copies' `bwgame.h` are identical before building.
 
 ## BUG-3 - `get_unit(index)` does not accept the id an existing unit reports
 
+**Status: DOCUMENTED, no behavior change.** Verified live: id-based
+round-trip over all 189 visible units on M&M_v_ZealDrag returns the same
+unit every time, and T17 pins the raw-index path. The trap is real but
+narrow - constructing a `unit_id_t` from the raw 0-based `u->index`
+skips the +1 and can only resolve to nullptr, never to a wrong unit
+(the generation check rejects it). Both overloads plus `get_unit_id`
+now document the 1-based convention; no encoding change (that would
+ripple to every caller and to replay compat).
+
 **Observed while writing T17.**
 
 `unit_t::index` is what callers have, and `get_unit(size_t index)` resolves it
@@ -84,6 +106,12 @@ round-trips every visible unit.
 
 ## BUG-4 - Map-declared defeat makes "the game ends" indistinguishable from a bug
 
+**Status: FIXED (diagnostic).** `execute_trigger_action` logs one stderr
+line per victory/defeat action (`bwgame: trigger victory|defeat: frame N
+slot M`); visible in server logs, harmless to the exit-code-based test
+runner. Verified live: 1Drag's frame-30/32 trigger victories now name
+themselves in `tests/run.sh` output.
+
 **Observed:** `1Drag_v_1Zeal.scm` defeats slots 1-3 at frame 312 because its own
 trigger 1 is `Elapsed time 300 s -> Defeat` (and trigger 0 is
 `Command 18 -> Defeat`). Nothing logs which trigger ended the game.
@@ -99,6 +127,14 @@ change.
 ---
 
 ## BUG-5 - Unsupported trigger types abort the whole simulation
+
+**Status: FIXED (tolerance + counters).** Unknown conditions evaluate
+false (a trigger that cannot prove it should fire doesn't) and unknown
+actions are skipped like action 105; both increment
+`state::skipped_trigger_conditions/actions`, first occurrence logged.
+`tests/run.sh` stays green on both default maps. Note: the A3.1
+`fixme rescue passive / unknown flag` map-load aborts are a separate
+code path, not covered by this change.
 
 **Observed:** `test_trigger_condition()` / `execute_trigger_action()` call
 `error("unknown trigger condition/action %d")` for anything not implemented.
