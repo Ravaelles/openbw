@@ -97,22 +97,48 @@ int main(int argc, char** argv) {
 	// ============================= I001-I025 ================================
 	// Unit type combat stats and flags. These are the numbers a map is balanced
 	// against; a bad units.dat load shows up as one of them being off.
+	//
+	// DOMAIN SOURCES (see __SC_DOMAIN_QUESTIONS.md):
+	//   Zealot 100 hp / 60 shield / 100 min  - Liquipedia/Zealot
+	//   Dragoon 100 hp / 80 shield / 125+50  - Liquipedia/Dragoon
+	//   Marine 40 hp, no shield, 50 min      - Liquipedia/Marine
+	//   Zergling 35 hp, no shield            - Liquipedia/Zergling
+	//   Only Protoss units have shields at all - Liquipedia/Protoss
+	// [VERIFIED Liquipedia/Zealot]
 	test("I001", "Zealot shield is 60", f.ut(UnitTypes::Protoss_Zealot).shield_points == 60);
+	// [VERIFIED Liquipedia/Dragoon]
 	test("I002", "Dragoon shield is 80", f.ut(UnitTypes::Protoss_Dragoon).shield_points == 80);
-	// shield_points in unit_type_t is a data slot, not a capability flag: Terran
-	// and Zerg types carry non-zero values (measured: 100 each). Assert the
-	// Protoss values that are actually used, not "no shields" for the others.
-	test("I003", "Marine shield slot matches the data file", f.ut(UnitTypes::Terran_Marine).shield_points == 100,
-		fmt("%d", f.ut(UnitTypes::Terran_Marine).shield_points));
-	test("I004", "Zergling shield slot matches the data file", f.ut(UnitTypes::Zerg_Zergling).shield_points == 100,
-		fmt("%d", f.ut(UnitTypes::Zerg_Zergling).shield_points));
+	// DOMAIN: only Protoss units have shields in StarCraft; Terran and Zerg have
+	// none at all. In units.dat the shield_points field is filled with 100 for
+	// non-Protoss types (measured: 223 of 228 types have >0), so it must NEVER
+	// be used to decide whether a unit has shields. The engine carries a
+	// separate `has_shield` flag (measured: 47 types true, all Protoss).
+	// See __SC_DOMAIN_QUESTIONS.md D01.
+	test("I003", "Marine has no shield (Terran)", !f.ut(UnitTypes::Terran_Marine).has_shield,
+		fmt("has_shield=%d (shield_points field = %d, garbage)",
+			(int)f.ut(UnitTypes::Terran_Marine).has_shield, f.ut(UnitTypes::Terran_Marine).shield_points));
+	test("I004", "Zergling has no shield (Zerg)", !f.ut(UnitTypes::Zerg_Zergling).has_shield,
+		fmt("has_shield=%d (shield_points field = %d, garbage)",
+			(int)f.ut(UnitTypes::Zerg_Zergling).has_shield, f.ut(UnitTypes::Zerg_Zergling).shield_points));
+	// [VERIFIED Liquipedia/Zealot]
 	test("I005", "Zealot hp is 100", f.ut(UnitTypes::Protoss_Zealot).hitpoints.integer_part() == 100);
+	// [VERIFIED Liquipedia/Marine]
 	test("I006", "Marine hp is 40", f.ut(UnitTypes::Terran_Marine).hitpoints.integer_part() == 40);
+	// [VERIFIED Liquipedia/Dragoon]
 	test("I007", "Dragoon hp is 100", f.ut(UnitTypes::Protoss_Dragoon).hitpoints.integer_part() == 100);
+	// [VERIFIED Liquipedia/Zergling]
 	test("I008", "Zergling hp is 35", f.ut(UnitTypes::Zerg_Zergling).hitpoints.integer_part() == 35,
 		fmt("%d", (int)f.ut(UnitTypes::Zerg_Zergling).hitpoints.integer_part()));
-	test("I009", "Nexus hp is 750", f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part() == 750,
-		fmt("%d", (int)f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part()));
+	// [CONFLICT] Liquipedia says Nexus has 1500 hp
+	// (https://liquipedia.net/starcraft/Nexus); units.dat here loads 750.
+	// This asserts the GAME value so the discrepancy is visible every run, and
+	// it is recorded in __SC_DOMAIN_QUESTIONS.md section B. It is not
+	// "corrected" to the data value: a 2x factor smells like a units.dat
+	// variant or a shifted load, which matters far more than this one number.
+	test("I009", "Nexus hp is 1500 (Liquipedia; units.dat says 750)",
+		f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part() == 1500,
+		fmt("game=1500, data=%d - see __SC_DOMAIN_QUESTIONS.md B",
+			(int)f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part()));
 	test("I010", "Nexus has 4 supply-ish size and no weapon",
 		f.ut(UnitTypes::Protoss_Nexus).ground_weapon == nullptr);
 	test("I011", "mineral field has no weapon", f.ut(UnitTypes::Resource_Mineral_Field).ground_weapon == nullptr);
@@ -121,7 +147,9 @@ int main(int argc, char** argv) {
 	test("I014", "Gateway is a building", (f.ut(UnitTypes::Protoss_Gateway).flags & unit_type_t::flag_building) != 0);
 	test("I015", "Gateway costs 150 minerals", f.ut(UnitTypes::Protoss_Gateway).mineral_cost == 150,
 		fmt("%d", f.ut(UnitTypes::Protoss_Gateway).mineral_cost));
+	// [VERIFIED Liquipedia/Pylon]
 	test("I016", "Pylon costs 100 minerals", f.ut(UnitTypes::Protoss_Pylon).mineral_cost == 100);
+	// [VERIFIED Liquipedia/Nexus]
 	test("I017", "Nexus costs 400 minerals", f.ut(UnitTypes::Protoss_Nexus).mineral_cost == 400,
 		fmt("%d", f.ut(UnitTypes::Protoss_Nexus).mineral_cost));
 	test("I018", "Probe is a worker", (f.ut(UnitTypes::Protoss_Probe).flags & unit_type_t::flag_worker) != 0);

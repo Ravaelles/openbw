@@ -117,13 +117,25 @@ The wait action sets `trigger_waiting`, but only `process_triggers()` clears it
 and advances `trigger_wait_timers`. Testing the action in isolation therefore
 cannot exercise the resume path - see BUG-7.
 
-### N17 - `shield_points` in the type table is a maximum, and it is non-zero for non-Protoss
+### N17 - Only Protoss have shields, and `shield_points` is garbage for everyone else
 
-`unit_type_t::shield_points` is the maximum shields. Terran and Zerg types carry
-a **non-zero** value (measured: Marine = 100, Zergling = 100) because the field
-is a data slot, not a capability flag. Whether a unit has shields at all is
-decided by the Protoss race / unit flags, not by this number. Do not use
-`shield_points == 0` to detect "no shields".
+In StarCraft **only the Protoss race has shields**; Terran and Zerg have none
+([Liquipedia: Protoss](https://liquipedia.net/starcraft/Protoss)).
+
+`unit_type_t::shield_points` does **not** encode that. Measured over 228 types:
+
+```
+shield_points > 0   : 223 types   (Terran and Zerg included, value 100)
+has_shield == true  :  47 types   (all Protoss)
+Marine  : shield_points=100, has_shield=0      <- no shields in the game
+Zergling: shield_points=100, has_shield=0      <- no shields in the game
+Zealot  : shield_points=60,  has_shield=1
+```
+
+So `shield_points > 0` is **wrong** for "has shields" (99 of 228 types would be
+misreported). Use `unit_type_t::has_shield`. This correction came from a
+review: an earlier version of this file claimed the 100 was "a data slot" and
+treating it as shields was merely redundant - that was wrong.
 
 ### N18 - `unit_t::hp` and `unit_t::shield_points` are fp8, the type table's are integers
 

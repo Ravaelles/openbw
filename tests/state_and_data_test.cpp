@@ -122,12 +122,17 @@ int main(int argc, char** argv) {
 			fmt("%d/%d", marine.mineral_cost, marine.gas_cost));
 	}
 	{
-		// BroodWar Zergling cost (the units.dat this engine loads): 50/0. The
-		// 25/0 figure belongs to the original StarCraft, not to this data file.
+		// [ENGINE DATA + CONFLICT] Liquipedia says Zergling costs 25/0
+		// (https://liquipedia.net/starcraft/Zergling); the units.dat loaded here
+		// says 50/0. This asserts the DATA, not the game rule, and the conflict
+		// is recorded in __SC_DOMAIN_QUESTIONS.md (section C). It is deliberately
+		// NOT "corrected" to 25: if the loader reads a shifted field, every cost
+		// in the game is wrong, and this test is where that would surface.
 		const auto& zergling = types[(size_t)UnitTypes::Zerg_Zergling];
-		test("D08", "Zergling has expected BroodWar cost",
+		test("D08", "Zergling cost as loaded from units.dat (Liquipedia: 25/0)",
 			zergling.mineral_cost == 50 && zergling.gas_cost == 0,
-			fmt("%d/%d", zergling.mineral_cost, zergling.gas_cost));
+			fmt("data=%d/%d, Liquipedia=25/0 - see __SC_DOMAIN_QUESTIONS.md C",
+				zergling.mineral_cost, zergling.gas_cost));
 	}
 	{
 		// Most buildings take frames to build, but four special types have no
@@ -140,7 +145,9 @@ int main(int argc, char** argv) {
 			++buildings;
 			if (t.build_time == 0) ++zero_time;
 		}
-		test("D09", "almost all buildings have a build time", buildings > 0 && zero_time <= 5,
+		// [ENGINE DATA] four special building types have no build time in the data
+		// file; whether that matches the game is an open question (section D).
+		test("D09", "almost all buildings have a build time (engine data)", buildings > 0 && zero_time <= 5,
 			fmt("%d buildings, %d without build time", buildings, zero_time));
 	}
 	{
@@ -165,7 +172,10 @@ int main(int argc, char** argv) {
 			const auto& t = types[(size_t)id];
 			if (!(t.flags & unit_type_t::flag_worker)) workers_flagged = false;
 		}
-		test("D12", "workers carry the Worker group flag", workers_flagged);
+		// [ENGINE DATA] flag_worker membership is a data-file fact; the game rule
+		// "these three are the workers" is domain knowledge stated in
+		// __SC_DOMAIN_QUESTIONS.md (section D).
+		test("D12", "workers carry the Worker flag (engine data)", workers_flagged);
 	}
 	{
 		const auto& mineral = types[(size_t)UnitTypes::Resource_Mineral_Field];
