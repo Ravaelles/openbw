@@ -27,23 +27,32 @@ if [ ${#maps[@]} -eq 0 ]; then
   exit 2
 fi
 
-bin="$(mktemp -t engine_behaviour_test.XXXXXX)"
-trap 'rm -f "$bin"' EXIT
+bins=()
+cleanup() { for b in "${bins[@]}"; do rm -f "$b"; done; }
+trap cleanup EXIT
 
-echo "building $bin from $root"
-if ! g++ -std=c++17 -O2 -I"$root" "$here/engine_behaviour_test.cpp" -o "$bin" -lz -lbz2; then
-  echo "FAIL: build failed" >&2
-  exit 2
-fi
+for suite in engine_behaviour_test trigger_semantics_test; do
+  [ -f "$here/$suite.cpp" ] || continue
+  bin="$(mktemp -t "$suite.XXXXXX")"
+  echo "building $suite"
+  if ! g++ -std=c++17 -O2 -I"$root" "$here/$suite.cpp" -o "$bin" -lz -lbz2; then
+    echo "FAIL: build of $suite failed" >&2
+    exit 2
+  fi
+  bins+=("$bin")
+done
+[ ${#bins[@]} -gt 0 ] || { echo "FAIL: no test sources found" >&2; exit 2; }
 
 failed=0
 for m in "${maps[@]}"; do
   [ -f "$m" ] || { echo "FAIL: no such map: $m" >&2; failed=1; continue; }
-  echo
-  echo "=== $(basename "$m")"
-  if ! UMS_TEST_DATA_DIR="$UMS_TEST_DATA_DIR" "$bin" "$m"; then
-    failed=1
-  fi
+  for bin in "${bins[@]}"; do
+    echo
+    echo "=== $(basename "$m") [$(basename "$bin" | cut -d. -f1)]"
+    if ! UMS_TEST_DATA_DIR="$UMS_TEST_DATA_DIR" "$bin" "$m"; then
+      failed=1
+    fi
+  done
 done
 
 if [ "$failed" -ne 0 ]; then
