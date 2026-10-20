@@ -19,6 +19,7 @@
 // command line so the test does not depend on any one machine's map layout.
 #include "bwgame.h"
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -61,7 +62,24 @@ int main(int argc, char** argv) {
 		printf("usage: %s <map.scm>\n", argv[0]);
 		return 2;
 	}
-	const char* map = argv[1];
+	// A .chk is a bare scenario with no MPQ wrapper: wrap it in memory so both
+	// forms can be loaded by the same code path.
+	a_vector<uint8_t> chk_storage;
+	std::string map_path = argv[1];
+	if (map_path.size() >= 4 && map_path.compare(map_path.size() - 4, 4, ".chk") == 0) {
+		FILE* fp = fopen(map_path.c_str(), "rb");
+		if (!fp) { printf("FAIL cannot open %s\n", map_path.c_str()); return 2; }
+		fseek(fp, 0, SEEK_END);
+		long sz = ftell(fp);
+		fseek(fp, 0, SEEK_SET);
+		chk_storage.resize((size_t)sz);
+		if (fread(chk_storage.data(), 1, (size_t)sz, fp) != (size_t)sz) {
+			fclose(fp);
+			printf("FAIL short read %s\n", map_path.c_str());
+			return 2;
+		}
+		fclose(fp);
+	}
 	const char* data_dir = getenv("UMS_TEST_DATA_DIR");
 	if (!data_dir || !*data_dir) {
 		printf("FAIL: set UMS_TEST_DATA_DIR to the directory with the .mpq files\n");
@@ -74,7 +92,20 @@ int main(int argc, char** argv) {
 	// --- Test 1: loading a UMS map must not throw ------------------------
 	bool loaded_ok = true;
 	try {
-		load_ums(player, map);
+		if (!chk_storage.empty()) {
+			// Raw CHK: same load path minus the MPQ wrapper. setup_f is the
+			// hook BWData uses to set USE_MAP_SETTINGS before chunks are read.
+			// load_map_data is a member of game_load_functions: it owns
+			// setup_info and calls setup_f after reading the header chunks, so
+			// the flags must be set on that object before load_map_data runs.
+			game_load_functions lf(st);
+			lf.setup_info.victory_condition = 0;
+			lf.setup_info.tournament_mode = 0;
+			lf.setup_info.starting_units = 0;
+			lf.load_map_data(chk_storage.data(), chk_storage.size(), [] {});
+		} else {
+			load_ums(player, map_path.c_str());
+		}
 	} catch (std::exception& e) {
 		printf("FAIL map load threw: %s\n", e.what());
 		loaded_ok = false;
