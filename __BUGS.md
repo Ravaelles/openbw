@@ -111,3 +111,47 @@ cannot be hosted at all for this reason (`fixme rescue passive`,
 **Suggested fix (not applied):** make it a counted, logged no-op
 (`state::skipped_trigger_actions`) like action 105, so the map still runs and the
 omission is visible in one line.
+
+---
+
+## BUG-6 - "Move location" does not preserve region size
+
+**Observed:** `tests/trigger_actions_test.cpp` A12:
+
+```
+FAIL A12 move location keeps region size: dx 160 -> 256
+```
+
+**Cause:** case 38 in `execute_trigger_action()` computes `diff` between the
+source region's centre and the unit position, then adds it to the **target**
+region's corners. When the two regions have different sizes, the result is
+clamped independently per corner (`if (to.x >= map_width) ...`), so width and
+height can change. A trigger that moves a location is expected to translate it.
+
+**Effect:** maps that move a region (e.g. "follow the hero") get a differently
+sized region after the first move, so "bring units to location" starts
+matching areas the mapper never chose. Silent, and only visible several
+triggers later.
+
+**Suggested fix (not applied):** translate the **source** region's size onto the
+target, i.e. set `target = pos +- (source_size / 2)` (or keep the target's size
+and only move its centre), and clamp the whole rectangle as a unit so width and
+height cannot change.
+
+---
+
+## BUG-7 - "Wait" cannot be tested through the action alone
+
+**Observed while writing A03.** The resume-after-timer behaviour lives in
+`process_triggers()` (`trigger_wait_timers` / `trigger_timer`), not in
+`execute_trigger_action()`. Calling the action twice in isolation therefore never
+exercises the resume path, and it is easy to write a test that "proves" the
+wrong thing (the first version of A03 did exactly that and failed).
+
+**Effect:** no user-visible bug, but it is a testability gap: the wait state
+machine has two owners (the action and the scheduler), which is also why it is
+easy to break when either changes.
+
+**Suggested fix (not applied):** move the timer decrement into a named
+`advance_trigger_wait(owner)` used by `process_triggers()`, so a test can drive
+the full cycle without a frame loop.
