@@ -212,6 +212,27 @@ zero research time and race id 3 ("none"), which is why U29 now asserts "every
 
 ---
 
+## C5. VERIFIED for the V-series (sight and attack geometry)
+
+| fact | value | source / test |
+|---|---|---|
+| Zealot sight | 7 tiles | [Zealot](https://liquipedia.net/starcraft/Zealot) / V01 |
+| Dragoon sight | 8 tiles | [Dragoon](https://liquipedia.net/starcraft/Dragoon) / V02 |
+| Marine sight | 7 tiles | [Marine](https://liquipedia.net/starcraft/Marine) / V03 |
+| Zealot attack range | 1 tile (melee) | [Zealot](https://liquipedia.net/starcraft/Zealot) / V16 |
+| Dragoon attack range | 4 tiles (128 px) | [Dragoon](https://liquipedia.net/starcraft/Dragoon) / V17 |
+| Marine attack range | 4 tiles (128 px) | [Marine](https://liquipedia.net/starcraft/Marine) / V18 |
+| Zealot cooldown | 0.924 s ~ 22 frames | [Zealot](https://liquipedia.net/starcraft/Zealot) / V21 |
+| Dragoon cooldown | 1.26 s ~ 30 frames | [Dragoon](https://liquipedia.net/starcraft/Dragoon) / V22 |
+| Marine cooldown | 0.61 s ~ 15 frames | [Marine](https://liquipedia.net/starcraft/Marine) / V23 |
+
+**Engine units:** `sight_range` is in **tiles**, `weapon max_range` is in
+**pixels** (1 tile = 32 px), and `cooldown` is in **frames** at 24 fps. Mixing
+these three is the most common way to write a nonsense assertion; every V test
+names the unit it uses.
+
+---
+
 ## D. Remaining assumptions to confirm before trusting the tests
 
 These are currently written as **ENGINE DATA** (they describe what the loader
