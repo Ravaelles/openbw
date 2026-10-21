@@ -186,9 +186,10 @@ wrong thing (the first version of A03 did exactly that and failed).
 machine has two owners (the action and the scheduler), which is also why it is
 easy to break when either changes.
 
-**Suggested fix (not applied):** move the timer decrement into a named
-`advance_trigger_wait(owner)` used by `process_triggers()`, so a test can drive
-the full cycle without a frame loop.
+**Status: FIXED (verbatim extraction + pin).** The countdown lives in
+`advance_trigger_wait_timers()` called once per update; A22 drives it
+directly (100 -> 58 -> 16 -> released) without frames. No behavior
+change: full suite green on both maps after the move.
 
 ---
 

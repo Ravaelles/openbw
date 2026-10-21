@@ -355,6 +355,22 @@ int main(int argc, char** argv) {
 			fmt("ok=%d skipped=%d", (int)ok, st.skipped_trigger_actions - before));
 	}
 
+	// A22 - the wait countdown advances without a frame loop (BUG-7 seam):
+	// a set timer decrements by the step, expiry clears waiting.
+	{
+		st.trigger_waiting[1] = true;
+		st.trigger_wait_timers[1] = 100;
+		f.lf.advance_trigger_wait_timers();
+		bool stepped = st.trigger_wait_timers[1] == 100 - 42 && st.trigger_waiting[1];
+		f.lf.advance_trigger_wait_timers();
+		f.lf.advance_trigger_wait_timers();
+		bool expired = !st.trigger_waiting[1] && st.trigger_wait_timers[1] == 0;
+		test("A22", "wait timer counts down and releases", stepped && expired,
+			fmt("t=%d waiting=%d", st.trigger_wait_timers[1], (int)st.trigger_waiting[1]));
+		st.trigger_waiting[1] = false;
+		st.trigger_wait_timers[1] = 0;
+	}
+
 	printf("\n%d/%d passed\n", total - failures, total);
 	if (failures) {
 		printf("FAILED\n");

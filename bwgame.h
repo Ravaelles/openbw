@@ -13132,7 +13132,10 @@ struct state_functions {
 		update_thingies();
 	}
 
-	void process_triggers() {
+	// Wait-state countdown split out of process_triggers() (test seam:
+	// a test drives the full wait cycle without running frames).
+	// Verbatim move - the scheduler calls it once per update.
+	void advance_trigger_wait_timers() {
 		int timer_step = 42;
 
 		for (size_t i = 0; i != 12; ++i) {
@@ -13147,6 +13150,10 @@ struct state_functions {
 				t -= timer_step;
 			}
 		}
+	}
+
+	void process_triggers() {
+		advance_trigger_wait_timers();
 
 		if (st.trigger_timer) {
 			--st.trigger_timer;
