@@ -287,3 +287,37 @@ branch: 0 -> full, 1 -> 50%, 2 -> 25%.
 
 **Not covered by a passing test yet:** C22-C26 currently assert sizes, not
 damage outcome, and the tests are left documenting this in comments.
+
+---
+
+## BUG-10 - Hatchery provides 1 supply in units.dat, 0 in the game
+
+**Observed:** `tests/production_and_buildings_test.cpp` P17:
+
+```
+FAIL P17 Hatchery provides no supply (Liquipedia; data says 1): data raw=2 (=1.0)
+```
+
+**Sources:** [Liquipedia: Hatchery](https://liquipedia.net/starcraft/Hatchery)
+states the Hatchery provides no control; Zerg supply comes from
+[Overlords](https://liquipedia.net/starcraft/Overlord) (8 each).
+
+**Measured:** `units.dat` gives `Zerg_Hatchery.supply_provided == 1.0` (fp1 raw
+2). The Overlord value is correct (8.0, raw 16).
+
+**Effect:** every Hatchery adds 1 headroom to the Zerg player's supply. With
+three Hatcheries that is 3 extra supply that should not exist - usually hidden
+because Zerg players build Overlords early, but it changes the exact moment a
+player gets supply-blocked, and it makes "supply blocked at N" tests unreliable.
+
+**Possible explanations, not distinguished here:**
+
+1. a data-file variant (some mods give Hives/Lairs supply),
+2. the field is intentionally the Hatchery's own "supply provided" as used by
+   the campaign, where the player starts with a Hatchery and no Overlord,
+3. a loader shift - ruled unlikely: Overlord, Pylon and Supply Depot values are
+   all correct in the same field.
+
+**Suggested check (not applied):** compare a Lair and a Hive; if both are 1 too,
+this is probably deliberate for campaign starts. The test asserts the *game*
+value (0) so the discrepancy is visible on every run.
