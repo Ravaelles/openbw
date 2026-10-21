@@ -4,6 +4,80 @@ Terse rules. Each exists because ignoring it produced a real error.
 
 ---
 
+## 0. Measure first, then assert (read this before writing anything)
+
+This is the most important rule in the file and the easiest one to skip.
+
+**Never write an assertion from what you believe the data contains.** Run a
+throw-away probe first, print the actual values, and only then write the test
+against what you saw.
+
+### The rule in one line
+
+> A number you have not printed in this session is a guess, even if you are sure.
+
+### Why it matters here specifically
+
+This engine is not vanilla StarCraft. `units.dat` and `orders.dat` disagree with
+the documentation in several places, and the code uses sparse enums, fp1/fp8
+fixed point, and global-vs-per-map tables. A correct memory of StarCraft is
+therefore **not** a correct expectation of this code.
+
+### How to do it (three commands, five minutes)
+
+1. Find the real symbol, do not guess it:
+   `grep -n "enum struct Orders" bwenums.h` - names may be `StayInRange`, not
+   `Hold`; `TechTypes::Stim_Packs` is a tech, not an upgrade.
+2. Print the value:
+
+   ```cpp
+   // /tmp/probe.cpp
+   game_player p(data_loading::data_files_directory("/tmp/scdata/"));
+   game_load_functions lf(p.st());
+   lf.setup_info.victory_condition = 0; lf.setup_info.starting_units = 0;
+   lf.load_map_file(argv[1], {}, false);
+   printf("%zu\n", p.st().global->order_types.vec.size());
+   ```
+
+   ```
+   g++ -std=c++17 -O2 -I. /tmp/probe.cpp -o /tmp/probe -lz -lbz2
+   UMS_TEST_DATA_DIR=/tmp/scdata /tmp/probe <map>
+   ```
+3. Write the assertion against the printed value, and put the number in the
+   test message so a future change is visible.
+
+### The measured difference
+
+Two consecutive batches of 50 tests:
+
+| batch | approach | result |
+|---|---|---|
+| production / tech | wrote assertions from memory | 6 wrong assumptions, 3 rebuild cycles |
+| orders | probed the enum and table first | 0 corrections, first run 50/50 |
+
+Same engine, same author, same day. The only difference was printing the values
+before asserting them.
+
+### What "wrong" looked like (real cases)
+
+```cpp
+// assumed: Orders::Hold exists            -> does not compile; it is StayInRange
+// assumed: order table = enum line count  -> 189 entries, enum prints 190
+// assumed: orders live in st.game         -> they are in st.global
+// assumed: supply starts at 0             -> M&M slot 2 reports 144 at load
+// assumed: 100/100 tech is unique         -> 15 techs share that price
+```
+
+Every one of these would have been caught by one `printf`.
+
+### Self-check before committing
+
+- [ ] Every non-obvious number in the test was printed during this session.
+- [ ] Every enum member used exists (compile it; do not trust the name).
+- [ ] Every table size comes from `.size()`, not from counting lines.
+- [ ] If a value surprised me, the surprise is written into the test comment.
+- [ ] `tests/run.sh` builds and runs before the commit (see section 8).
+
 ## 1. Two axes of truth - prove both, separately
 
 | axis | source | proof |
@@ -52,6 +126,8 @@ Pattern: each error was **a gap filled with an assumption and labelled verified*
 
 ## 3. Writing tests
 
+- **Print the value before you assert it** (section 0). This one habit removed
+  every correction cycle in the only batch where it was followed.
 - One test = one assertion + a name that states the expectation.
 - A test must be able to **fail**. No `test(..., true)`, no `ok = ok`. (Two such
   slipped into V14/V46 and were removed.)
