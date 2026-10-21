@@ -214,21 +214,25 @@ other type the field holds the data-file fill value (100), so units that must
 have no shields are created with a full shield pool. `has_shield` is set
 correctly, so the *type* is right and only the *instance* is wrong.
 
-**Effect:** damage is absorbed by a shield that should not exist. A Terran or
-Zerg unit survives the first 100 damage of every engagement (until the shield is
-drained, and if shields regenerate it never becomes a plain hp fight). Balance
-tests would read this as "Marines are far too tanky". It also means
-"shields destroyed" statistics pick up non-Protoss units.
+**Effect, corrected on verification:** every in-engine consumer
+guards on `has_shield` (damage absorption, regen, the max-shield sums -
+checked branch by branch), so no fight outcome, eval number or regen
+tick ever read the phantom pool. What the defect was: wrong instance
+state from creation (the project's own L29/U26 pins treat the raw
+pool as the defect). No new path opened by the fix: Shield Battery
+recharge requires has_shield on the target
+(`unit_can_use_shield_battery`), so non-Protoss units can neither gain
+nor recharge shields. Fixed at the three creation sites
+(create, finish_building_unit, interceptor release).
 
 Why `1Drag` did not show it: the type it spawns (124 appears only on M&M's map
 units; 1Drag's units are Protoss/revealer/resource) has `shield_points == 0`
 after the data load for those ids, so copying it copied zero.
 
-**Suggested fix (not applied):** in the unit constructor, set
-`shield_points = unit_type->has_shield ? unit_type->shield_points : 0`, or clear
-shields when `!has_shield` after creation. Then L29 should pass on both maps.
-
-**Test status:** L29 is left red on M&M on purpose - it documents the defect.
+**Status: FIXED.** Three creation sites gated on `has_shield`;
+L29 and the cross-check U26 pass on both maps, full suite green.
+Protoss behavior unchanged (guarded readers already required
+has_shield everywhere - verified branch by branch before touching).
 
 ---
 

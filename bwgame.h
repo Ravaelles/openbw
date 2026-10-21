@@ -7254,7 +7254,7 @@ struct state_functions {
 		if (carrier_reaver_attack(u, 32 * unit_target_acquisition_range(u), 0))  {
 			unit_t* fighter = release_fighter(u);
 			if (fighter) {
-				fighter->shield_points = fp8::integer(fighter->unit_type->shield_points);
+				fighter->shield_points = fighter->unit_type->has_shield ? fp8::integer(fighter->unit_type->shield_points) : 0_fp8;
 				fighter->sprite->elevation_level = u->sprite->elevation_level - 1;
 				set_unit_order(fighter, fighter->unit_type->attack_unit, u->order_target.unit);
 				u->main_order_timer = 7;
@@ -15910,7 +15910,7 @@ struct state_functions {
 			return false;
 		}
 		u->last_attacking_player = 8;
-		u->shield_points = fp8::integer(u->unit_type->shield_points);
+		u->shield_points = u->unit_type->has_shield ? fp8::integer(u->unit_type->shield_points) : 0_fp8;
 		if (unit_is(u, UnitTypes::Protoss_Shield_Battery)) u->energy = fp8::integer(100);
 		else u->energy = unit_max_energy(u) / 4;
 
@@ -16511,7 +16511,7 @@ struct state_functions {
 	void finish_building_unit(unit_t*u) {
 		if (u->remaining_build_time) {
 			u->hp = u->unit_type->hitpoints;
-			u->shield_points = fp8::integer(u->unit_type->shield_points);
+			u->shield_points = u->unit_type->has_shield ? fp8::integer(u->unit_type->shield_points) : 0_fp8;
 			u->remaining_build_time = 0;
 		}
 		if (u_grounded_building(u)) {
