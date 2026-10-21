@@ -355,3 +355,43 @@ easy to break when either changes.
 **Suggested fix (not applied):** move the timer decrement into a named
 `advance_trigger_wait(owner)` used by `process_triggers()`, so a test can drive
 the full cycle without a frame loop.
+
+---
+
+## BUG-8 - Non-Protoss units are created with shield points (raw 25600)
+
+**Observed:** `tests/liquipedia_facts_test.cpp` L29 fails on
+`M&M_v_ZealDrag.scx`, passes on `1Drag_v_1Zeal.scm`:
+
+```
+FAIL L29 spawned non-Protoss units have zero shields: type 124 has 25600 raw shield
+```
+
+**Measured:**
+
+```
+type 124 (Terran, no shields): has_shield=0, shield_points=100 (garbage slot), hp=200
+every spawned unit of that type: owner=2, shield raw_value=25600 (= 100.0 fp8)
+```
+
+**Cause:** the unit factory copies `unit_type_t::shield_points` into
+`unit_t::shield_points` unconditionally. For Protoss that is correct; for every
+other type the field holds the data-file fill value (100), so units that must
+have no shields are created with a full shield pool. `has_shield` is set
+correctly, so the *type* is right and only the *instance* is wrong.
+
+**Effect:** damage is absorbed by a shield that should not exist. A Terran or
+Zerg unit survives the first 100 damage of every engagement (until the shield is
+drained, and if shields regenerate it never becomes a plain hp fight). Balance
+tests would read this as "Marines are far too tanky". It also means
+"shields destroyed" statistics pick up non-Protoss units.
+
+Why `1Drag` did not show it: the type it spawns (124 appears only on M&M's map
+units; 1Drag's units are Protoss/revealer/resource) has `shield_points == 0`
+after the data load for those ids, so copying it copied zero.
+
+**Suggested fix (not applied):** in the unit constructor, set
+`shield_points = unit_type->has_shield ? unit_type->shield_points : 0`, or clear
+shields when `!has_shield` after creation. Then L29 should pass on both maps.
+
+**Test status:** L29 is left red on M&M on purpose - it documents the defect.

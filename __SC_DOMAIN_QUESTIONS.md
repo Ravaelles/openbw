@@ -127,6 +127,25 @@ shield. Only Protoss rows carry a real shield value.
 
 ---
 
+## C2. VERIFIED: Liquipedia facts used by the L-series tests
+
+`tests/liquipedia_facts_test.cpp` asserts only values confirmed on these pages:
+
+| unit | fact | page |
+|---|---|---|
+| Probe | 20 hp, 20 shields, 50 min | [Probe](https://liquipedia.net/starcraft/Probe) |
+| SCV | 60 hp, no shields, 50 min | [SCV](https://liquipedia.net/starcraft/SCV) |
+| Drone | 40 hp, no shields, 50 min | [Drone](https://liquipedia.net/starcraft/Drone) |
+| Pylon | 300 hp, 300 shields, 100 min | [Pylon](https://liquipedia.net/starcraft/Pylon) |
+| Gateway | 500 hp, 500 shields, 150 min, armor 1 | [Gateway](https://liquipedia.net/starcraft/Gateway) |
+| Nexus | 750 hp + 750 shields = 1500, 400 min | [Nexus](https://liquipedia.net/starcraft/Nexus) |
+| Hatchery | 1250 hp, no shields, 300 min, armor 1 | [Hatchery](https://liquipedia.net/starcraft/Hatchery) |
+
+All seven agree with `units.dat`, which strengthens the earlier conclusion that
+the loader is not field-shifted.
+
+---
+
 ## D. Remaining assumptions to confirm before trusting the tests
 
 These are currently written as **ENGINE DATA** (they describe what the loader
