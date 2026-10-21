@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <cstdio>
 #include <cstdlib>
 #include <cmath>
 #include <functional>
@@ -242,6 +243,56 @@ struct state_base_copyable {
 
 	int trigger_timer;
 	std::array<a_vector<running_trigger>, 8> running_triggers;
+	// Deaths per player and unit type, needed by trigger conditions 15/16/21/23.
+	// StarCraft's "Deaths" condition counts units the player LOST, grouped by
+	// the unit id field (including the special 229/230/231/232 groups).
+	std::array<type_indexed_array<int, UnitTypes>, 12> unit_deaths;
+	// The map's 256 named switches (chunk SWNM provides the names). Trigger
+	// condition 4 reads them, action 5 writes them. Previously condition 4 was
+	// hardcoded to true and there was no action 5 at all, so every
+	// switch-driven map ran the "switch on" branch unconditionally.
+	std::array<bool, 256> switches{};
+	// Actions 105 (run AI script at location) seen but not executed; the AI
+	// script interpreter is not implemented, and this counter keeps the omission
+	// observable instead of silent.
+	int skipped_ai_script_actions = 0;
+	// Unknown trigger conditions/actions seen but not executed (BUG-5): one
+	// unsupported entry used to abort the whole simulation via error().
+	// Conditions evaluate false (the trigger cannot prove it should fire)
+	// and actions are skipped; both are counted here and the first
+	// occurrence is logged, so the omission is observable instead of
+	// silent - and instead of fatal.
+	int skipped_trigger_conditions = 0;
+	int skipped_trigger_actions = 0;
+	bool unknown_trigger_logged = false;
+
+	// NATIVE AI IS ONLY PARTIALLY SUPPORTED - read before touching this.
+	//
+	// A map can mark a slot as `controller_computer`, meaning "let StarCraft's
+	// built-in AI play this player". OpenBW has no implementation of that AI.
+	// The orders it would issue (`Orders::ComputerAI` and friends such as
+	// `AIPatrol`, `AIPlayerGuard`) therefore have no handler.
+	//
+	// This is a deliberate, documented limitation, NOT a bug to work around
+	// casually:
+	//   * such a map LOADS completely (units, triggers, regions) - measured on
+	//     the UMS corpus: 169/148/26/24/13/10 units, 75/4 triggers;
+	//   * the computer player is then IDLE for the whole match. It does not
+	//     build, attack, or defend. Units stay where the map placed them.
+	//   * anything that depends on the native AI acting (attacks, expansion,
+	//     trigger chains seeded by AI behaviour) will NOT happen.
+	//
+	// Before this counter existed, the first AI order aborted the entire
+	// simulation with error("ComputerAI"), so such maps could not be hosted at
+	// all (BUG-12). Now the order is skipped, counted here and logged once, and
+	// the match continues - which makes the map usable for everything except
+	// the AI player itself.
+	//
+	// Do NOT read a passing match on such a map as "AI works". Check this
+	// counter: a non-zero value means the native-AI portion of that map was
+	// NOT simulated.
+	int skipped_native_ai_orders = 0;
+	bool native_ai_logged = false;
 	std::array<int, 12> trigger_wait_timers;
 	std::array<bool, 12> trigger_waiting;
 
@@ -623,6 +674,9 @@ struct state_functions {
 		play_sound(id, xy(), nullptr, add_race_index);
 	}
 
+	// Raw container index (0-based). See get_unit_id() below for building
+	// the id-typed lookup key: stuffing a raw index into a unit_id_t
+	// skips the +1 and will not round-trip (BUG-3).
 	unit_t* get_unit(size_t index) const {
 		unit_t* u = st.units_container.try_get(index);
 		if (!u) return nullptr;
@@ -640,6 +694,8 @@ struct state_functions {
 		return u;
 	}
 
+	// Id-typed lookup key (1-based inside; 0 means null). Build it with
+	// get_unit_id()/get_unit_id_32(), never from u->index directly.
 	unit_id get_unit_id(const unit_t* u) const {
 		if (!u) return unit_id{};
 		return unit_id(u->index + 1, u->unit_id_generation % (1u << 5));
@@ -2628,6 +2684,7 @@ struct state_functions {
 			remove_queued_order(u, &u->order_queue.front());
 		}
 		set_unit_order(u, get_order_type(Orders::Die), u->order_target.pos);
+		record_unit_death(u);
 		on_kill_unit(u);
 	}
 
@@ -7225,7 +7282,7 @@ struct state_functions {
 		if (carrier_reaver_attack(u, 32 * unit_target_acquisition_range(u), 0))  {
 			unit_t* fighter = release_fighter(u);
 			if (fighter) {
-				fighter->shield_points = fp8::integer(fighter->unit_type->shield_points);
+				fighter->shield_points = fighter->unit_type->has_shield ? fp8::integer(fighter->unit_type->shield_points) : 0_fp8;
 				fighter->sprite->elevation_level = u->sprite->elevation_level - 1;
 				set_unit_order(fighter, fighter->unit_type->attack_unit, u->order_target.unit);
 				u->main_order_timer = 7;
@@ -7618,6 +7675,24 @@ struct state_functions {
 				error("a neutral unit attacked something. this triggers computer player behavior which is not supported yet :(");
 			}
 		}
+	}
+
+	// One place for every native-AI order the engine cannot execute.
+	//
+	// Drops the order, counts it in state::skipped_native_ai_orders and logs the
+	// first occurrence. Units stay idle instead of the match aborting - see the
+	// long comment on that field for what this does and does not guarantee.
+	void skip_native_ai_order(unit_t* u, const char* what) {
+		++st.skipped_native_ai_orders;
+		if (!st.native_ai_logged) {
+			st.native_ai_logged = true;
+			std::fprintf(stderr,
+				"bwgame: native StarCraft AI order (%s) skipped - partial UMS support, "
+				"the AI player stays idle (further occurrences counted silently)\n", what);
+		}
+		// Clear the order so the idle unit does not retry it every frame.
+		u->order_type = get_order_type(Orders::Nothing);
+		u->order_process_timer = 0;
 	}
 
 	void execute_main_order(unit_t* u) {
@@ -8077,19 +8152,25 @@ struct state_functions {
 			error("CTFCOP2");
 			break;
 		case Orders::ComputerAI:
-			error("ComputerAI");
+			// Native StarCraft AI is not implemented: documented partial-UMS
+			// limitation, not an error. See state::skipped_native_ai_orders.
+			skip_native_ai_order(u, "ComputerAI");
 			break;
 		case Orders::AtkMoveEP:
-			error("AtkMoveEP");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "AtkMoveEP");
 			break;
 		case Orders::HarassMove:
-			error("HarassMove");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "HarassMove");
 			break;
 		case Orders::AIPatrol:
-			error("AIPatrol");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "AIPatrol");
 			break;
 		case Orders::GuardPost:
-			error("GuardPost");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "GuardPost");
 			break;
 		case Orders::RescuePassive:
 			error("RescuePassive");
@@ -8098,7 +8179,8 @@ struct state_functions {
 			order_Neutral(u);
 			break;
 		case Orders::ComputerReturn:
-			error("ComputerReturn");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "ComputerReturn");
 			break;
 		case Orders::InitializePsiProvider:
 			order_InitializePsiProvider(u);
@@ -12627,7 +12709,8 @@ struct state_functions {
 			error("hidden EnterTransport");
 			break;
 		case Orders::ComputerAI:
-			error("hidden ComputerAI");
+			// Same documented limitation as the visible path (BUG-12).
+			skip_native_ai_order(u, "hidden ComputerAI");
 			break;
 		case Orders::RescuePassive:
 			error("hidden RescuePassive");
@@ -13103,7 +13186,10 @@ struct state_functions {
 		update_thingies();
 	}
 
-	void process_triggers() {
+	// Wait-state countdown split out of process_triggers() (test seam:
+	// a test drives the full wait cycle without running frames).
+	// Verbatim move - the scheduler calls it once per update.
+	void advance_trigger_wait_timers() {
 		int timer_step = 42;
 
 		for (size_t i = 0; i != 12; ++i) {
@@ -13118,6 +13204,10 @@ struct state_functions {
 				t -= timer_step;
 			}
 		}
+	}
+
+	void process_triggers() {
+		advance_trigger_wait_timers();
 
 		if (st.trigger_timer) {
 			--st.trigger_timer;
@@ -13143,6 +13233,11 @@ struct state_functions {
 					}
 				}
 				if (execute_now) {
+					bool has_action = false;
+					for (auto& a : t.actions) {
+						if (a.type != 0) { has_action = true; break; }
+					}
+					if (!has_action) continue;
 					rt.current_action_index = 0;
 					execute_trigger(ets, i, rt, t);
 					any_triggers_executed = true;
@@ -13655,6 +13750,34 @@ struct state_functions {
 		if (image) set_image_heading_by_index(image, index);
 	}
 
+	// Size multiplier for explosive/concussive damage, extracted for tests
+	// (BUG-9 was filed against this switch on a misread table - the code
+	// already implemented the Liquipedia table, so this pins it instead
+	// of changing it). Small/medium/large per classic.battle.net
+	// (units are only those three sizes); size 0 is specials with no
+	// combat size (revealers, resources) and takes no explosive/
+	// concussive damage - engine behavior, no source found for a
+	// different rule, so it stays exactly as it was.
+	// The parameter is named `dt`, not `damage_type`: naming it after the enum
+	// (`weapon_type_t::damage_type`) shadows the type name and makes every
+	// comparison below parse as a member access - it does not compile.
+	static fp8 damage_size_multiplier(int dt, int unit_size) {
+		if (dt == weapon_type_t::damage_type_explosive) {
+			if (unit_size == 0) return 0_fp8;
+			if (unit_size == 1) return 128_fp8;
+			if (unit_size == 2) return 192_fp8;
+			return 256_fp8;
+		}
+		if (dt == weapon_type_t::damage_type_concussive) {
+			if (unit_size == 0) return 0_fp8;
+			if (unit_size == 2) return 128_fp8;
+			if (unit_size == 3) return 64_fp8;
+			return 256_fp8;
+		}
+		return 256_fp8;
+	}
+
+
 	void weapon_deal_damage(const weapon_type_t* weapon, fp8 damage, int damage_divisor, unit_t* target, direction_t heading, unit_t* source_unit, int source_owner) {
 		if (target->hp == 0_fp8) return;
 		if (u_invincible(target)) return;
@@ -13691,14 +13814,8 @@ struct state_functions {
 			damage = 0_fp8;
 			break;
 		case weapon_type_t::damage_type_explosive:
-			if (target->unit_type->unit_size == 0) damage = 0_fp8;
-			else if (target->unit_type->unit_size == 1) damage *= 128_fp8;
-			else if (target->unit_type->unit_size == 2) damage *= 192_fp8;
-			break;
 		case weapon_type_t::damage_type_concussive:
-			if (target->unit_type->unit_size == 0) damage = 0_fp8;
-			else if (target->unit_type->unit_size == 2) damage *= 128_fp8;
-			else if (target->unit_type->unit_size == 3) damage *= 64_fp8;
+			damage *= damage_size_multiplier(weapon->damage_type, target->unit_type->unit_size);
 			break;
 		case weapon_type_t::damage_type_normal:
 			break;
@@ -15876,7 +15993,7 @@ struct state_functions {
 			return false;
 		}
 		u->last_attacking_player = 8;
-		u->shield_points = fp8::integer(u->unit_type->shield_points);
+		u->shield_points = u->unit_type->has_shield ? fp8::integer(u->unit_type->shield_points) : 0_fp8;
 		if (unit_is(u, UnitTypes::Protoss_Shield_Battery)) u->energy = fp8::integer(100);
 		else u->energy = unit_max_energy(u) / 4;
 
@@ -16477,7 +16594,7 @@ struct state_functions {
 	void finish_building_unit(unit_t*u) {
 		if (u->remaining_build_time) {
 			u->hp = u->unit_type->hitpoints;
-			u->shield_points = fp8::integer(u->unit_type->shield_points);
+			u->shield_points = u->unit_type->has_shield ? fp8::integer(u->unit_type->shield_points) : 0_fp8;
 			u->remaining_build_time = 0;
 		}
 		if (u_grounded_building(u)) {
@@ -18884,6 +19001,33 @@ struct state_functions {
 		return r;
 	}
 
+	// StarEdit lets a condition target a pseudo-unit instead of one type:
+	//   229 any unit, 230 men, 231 buildings, 232 factories.
+	// Kept as a pure predicate so a new group is one table entry (OCP), not
+	// another branch inside a counting loop (previously a 5-way if-chain).
+	static bool unit_id_matches_group(const unit_type_t* ut, int unit_id) {
+		switch (unit_id) {
+		case 229: return true;
+		case 230: return (ut->group_flags & GroupFlags::Men) != 0;
+		case 231: return (ut->group_flags & GroupFlags::Building) != 0;
+		case 232: return (ut->group_flags & GroupFlags::Factory) != 0;
+		default: return (int)ut->id == unit_id;
+		}
+	}
+
+	// One responsibility: how many units matching `unit_id` the player lost.
+	// Uses unit_id_matches_group() so "what counts" and "sum the table" are
+	// separate decisions.
+	int trigger_death_count(int player, int unit_id) const {
+		if (player < 0 || player >= 12) return 0;
+		auto& deaths = st.unit_deaths[player];
+		int r = 0;
+		for (size_t i = 0; i != 228; ++i) {
+			if (unit_id_matches_group(get_unit_type((UnitTypes)i), unit_id)) r += deaths[(UnitTypes)i];
+		}
+		return r;
+	}
+
 	bool test_trigger_condition(const trigger::condition& c, int owner) const {
 		switch (c.type) {
 		case 2: // command
@@ -18896,10 +19040,27 @@ struct state_functions {
 			return trigger_count_comparison(c, trigger_opponent_count(owner, c.group));
 		case 22: // always
 			return true;
+		case 4: { // switch: on if the map's switch `location` is set
+			int index = c.location;
+			if (index < 0 || index >= 256) return false;
+			return st.switches[index];
+		}
 		default:
-			error("unknown trigger condition %d\n", c.type);
+			++st.skipped_trigger_conditions;
+			if (!st.unknown_trigger_logged) {
+				st.unknown_trigger_logged = true;
+				std::fprintf(stderr, "bwgame: unknown trigger condition %d (counted, trigger does not fire)\n", c.type);
+			}
 			return false;
 		}
+	}
+
+	// Recorded in kill_unit(), i.e. for every unit that actually dies, so the
+	// "Deaths" conditions see losses no matter how they were caused (combat,
+	// trigger kill, self-destruct).
+	void record_unit_death(const unit_t* u) {
+		if (u->owner >= 12) return;
+		++st.unit_deaths[u->owner][u->unit_type->id];
 	}
 
 	unit_t* trigger_create_unit(const unit_type_t* unit_type, xy pos, int owner) {
@@ -19043,11 +19204,13 @@ struct state_functions {
 		case 1: // victory
 			if (st.players[owner].controller == player_t::controller_occupied || st.players[owner].controller == player_t::controller_computer_game) {
 				ets.victory_state[owner] = 3;
+				std::fprintf(stderr, "bwgame: trigger victory: frame %d slot %d\n", (int)st.current_frame, owner);
 			}
 			return true;
 		case 2: // defeat
 			if (st.players[owner].controller == player_t::controller_occupied || st.players[owner].controller == player_t::controller_computer_game) {
 				ets.victory_state[owner] = 2;
+				std::fprintf(stderr, "bwgame: trigger defeat: frame %d slot %d\n", (int)st.current_frame, owner);
 			}
 			return true;
 		case 3: // preserve trigger
@@ -19091,7 +19254,20 @@ struct state_functions {
 				st.shared_vision[7] |= 1 << owner;
 				break;
 			default:
-				error("unknown ai script");
+				// Only the shared-vision AI scripts above are recognised. Any other
+				// script id belongs to the native StarCraft AI, which is not
+				// implemented: partial UMS support, documented on
+				// state::skipped_native_ai_orders. Count it and log once instead of
+				// aborting the match - an unsupported script used to make an
+				// otherwise loadable map unplayable (measured: ProtossBaseA_v_Zerg).
+				++st.skipped_native_ai_orders;
+				if (!st.native_ai_logged) {
+					st.native_ai_logged = true;
+					std::fprintf(stderr,
+						"bwgame: unsupported AI script (0x%x) skipped - partial UMS support, "
+						"native AI is not simulated (further occurrences counted silently)\n",
+						(unsigned)a.group2_n);
+				}
 			}
 			return true;
 		case 22: // kill unit
@@ -19298,9 +19474,24 @@ struct state_functions {
 				set_unit_resources(u, a.group2_n);
 			}
 			return true;
+		case 5: { // set switch: a.group_n is the switch index, a.num_n on/off
+			int index = a.group_n;
+			if (index >= 0 && index < 256) st.switches[index] = a.num_n != 0;
+			return true;
+		}
+		case 105: // run ai script at location (map "AI scripts" used by some UMS maps)
+			// The AI-script interpreter is not implemented. Do not abort, but do
+			// let the game report it, so "map used scripts and they were ignored"
+			// is observable.
+			++st.skipped_ai_script_actions;
+			return true;
 		default:
-			error("unknown trigger action %d", a.type);
-			return false;
+			++st.skipped_trigger_actions;
+			if (!st.unknown_trigger_logged) {
+				st.unknown_trigger_logged = true;
+				std::fprintf(stderr, "bwgame: unknown trigger action %d (counted, action skipped)\n", a.type);
+			}
+			return true;
 		}
 	}
 
@@ -21617,6 +21808,7 @@ struct game_load_functions : state_functions {
 				};
 				if (!should_create_units_for_this_player()) continue;
 				if (!use_map_settings && !is_neutral_unit()) continue;
+				if (valid_flags & 4) continue; // unit was placed in StarEdit but disabled for gameplay
 				if (use_map_settings) {
 					if (owner < 8 && setup_info.create_melee_units_for_player[owner] && ~unit_type->group_flags & GroupFlags::Neutral) continue;
 				}
@@ -21688,6 +21880,7 @@ struct game_load_functions : state_functions {
 
 		tag_funcs["MRGN"] = [&](data_reader_le r) {
 			// 64 or 256 entries
+			st.locations.clear();
 			while (r.left()) {
 				int left = r.get<int32_t>();
 				int top = r.get<int32_t>();
@@ -21745,7 +21938,13 @@ struct game_load_functions : state_functions {
 			}
 			for (auto& t : game_st.triggers) {
 				for (int i = 0; i != 8; ++i) {
-					if (st.players[i].controller != player_t::controller_occupied) continue;
+					// Playable slots after the UMS remap are controller_occupied
+					// (human) and controller_computer_game (AI). Matching only
+					// controller_occupied dropped every trigger on maps whose
+					// featured players are "Computer" in StarEdit - measured:
+					// 1Drag_v_1Zeal slots 1-3, 0 -> 5 running triggers per slot.
+					int c = st.players[i].controller;
+					if (c != player_t::controller_occupied && c != player_t::controller_computer_game) continue;
 					if (!t.enabled[i] && !t.enabled.at(17 + st.players[i].force) && !t.enabled[17]) continue;
 					st.running_triggers[i].emplace_back();
 					auto& rt = st.running_triggers[i].back();
