@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
 	// [VERIFIED https://liquipedia.net/starcraft/Hatchery + /Supply] "one Psi" is
 	// one supply. An earlier version asserted 0 and raised a false BUG-10 because
 	// I never read the page for the supply sentence - a lesson recorded in
-	// __CONVENTIONS.md section 1.
+	// _AI/CONVENTIONS.md section 1.
 	test("P17", "Hatchery provides 1 supply (one Psi)",
 		f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value == 2,
 		fmt("data raw=%d (=%.1f supply)", (int)f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value,

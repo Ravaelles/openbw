@@ -10,7 +10,7 @@
 // that scaling - a test that compares raw values against whole numbers would
 // conclude Zerglings cost "1 supply", which is wrong.
 //
-// [VERIFIED] / [ENGINE DATA] markers follow __CONVENTIONS.md.
+// [VERIFIED] / [ENGINE DATA] markers follow _AI/CONVENTIONS.md.
 //
 // Build (repo root):
 //   g++ -std=c++17 -O2 -I. tests/supply_and_limits_test.cpp -o build/supply_test -lz -lbz2

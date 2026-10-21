@@ -4,7 +4,7 @@
 // the values were also checked against what units.dat loaded, so a mismatch
 // means either the data file or the loader is wrong - both worth knowing.
 //
-// Rules followed here (see __CONVENTIONS.md):
+// Rules followed here (see _AI/CONVENTIONS.md):
 //   - a game rule needs a source; without one the test asserts engine data
 //   - a failure is a fact, not a reason to weaken the check
 //   - nothing is fixed from this file

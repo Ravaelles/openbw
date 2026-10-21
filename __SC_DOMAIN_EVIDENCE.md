@@ -5,7 +5,7 @@ quote of at most three words** taken from the page. Quotes come from the
 Liquipedia infobox lines, which are written as `Label:` followed by values on
 the next line.
 
-Rule (`__CONVENTIONS.md` section 1): a fact without a quote below is not
+Rule (`_AI/CONVENTIONS.md` section 1): a fact without a quote below is not
 VERIFIED and must not be asserted as a game rule.
 
 Verification levels used here:

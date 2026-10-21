@@ -2,7 +2,7 @@
 
 Defects found by the test suite. Each entry has the observation, the measured
 cause, the effect, and a suggested fix that was **not** applied (see
-`__CONVENTIONS.md` section 3). Non-obvious behaviour that is not a defect lives
+`_AI/CONVENTIONS.md` section 3). Non-obvious behaviour that is not a defect lives
 in `_AI/NON-OBVIOUS-FACTS.md`.
 
 Status: OPEN unless a commit is named.
@@ -172,7 +172,7 @@ omission is visible in one line.
 > inside-the-map containment; A12b covers the clamp half. Green on
 > both reference maps. Lesson kept: a failing test is a fact about
 > the *test setup* until the indices are re-read - see
-> `__CONVENTIONS.md` section 2, step 2.
+> `_AI/CONVENTIONS.md` section 2, step 2.
 
 ## BUG-7 - "Wait" cannot be tested through the action alone
 
@@ -271,7 +271,7 @@ Psi is another name for supply. `units.dat` value of 1 is correct.
 How the mistake was made, for the record: I fetched the page with a closed
 question ("does it provide supply?"), the reply covered larvae and not supply, and
 I treated the absence of the fact as a negative answer - then marked it
-`[VERIFIED]` and filed a bug on top of it. See `__CONVENTIONS.md` section 1,
+`[VERIFIED]` and filed a bug on top of it. See `_AI/CONVENTIONS.md` section 1,
 rule added after this.
 
 No code or data change is warranted. P17 now asserts 1 supply.

@@ -3,7 +3,7 @@
 Things this engine does that surprise you on first contact. Not defects - they
 cost time if unknown. Defects live in `_AI/BUGS.md`; domain assumptions and
 their verification live in `__SC_DOMAIN_QUESTIONS.md`; working rules live in
-`__CONVENTIONS.md`.
+`_AI/CONVENTIONS.md`.
 
 Everything below was measured on the reference maps (`1Drag_v_1Zeal.scm`,
 `M&M_v_ZealDrag.scx`) unless stated otherwise.
