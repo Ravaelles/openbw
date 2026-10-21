@@ -55,6 +55,11 @@ struct world {
 		w->max_range = range;
 		w->damage_amount = 5;
 		t->ground_weapon = w;
+		// Max hp matters for the kiting rules: is_wounded compares against it and
+		// returns false when it is 0 (a real type always has hp). The first
+		// version of the fixture forgot this, so every "wounded" test was
+		// measuring a division by zero guard instead of the rule.
+		t->hitpoints = fp8::integer(100);
 		types.push_back(std::move(t));
 		return types.back().get();
 	}
@@ -192,6 +197,107 @@ int main() {
 	{
 		unit_t* u = w.unit(melee, 0, 12, 34, 92);
 		test("Z14", "hp_total adds hp and shields", unit_hp_total(u) == 46);
+	}
+
+	// ======================= new behaviours (B1-B3) =======================
+
+	// ---- B1: focus fire - the group converges on one target ---------------
+	{
+		std::vector<candidate> in_range;
+		in_range.push_back({w.unit(ranged, 0, 50, 0, 100), 10, 50});
+		in_range.push_back({w.unit(ranged, 0, 10, 0, 101), 90, 10});   // most wounded
+		const unit_t* focus = w.units[0].get();   // any existing unit as a probe
+		(void)focus;
+		// The group picks the wounded one...
+		const unit_t* g = select_group_ranged_target(in_range, {});
+		test("Z15", "group target is the most wounded in range", g && g->index == 101);
+		// ...and every unit that is told to focus it returns exactly that pointer.
+		const unit_t* u1 = select_ranged_target(in_range, {}, g);
+		const unit_t* u2 = select_ranged_target(in_range, {}, g);
+		test("Z16", "focus target is honoured over local choice", u1 == g && u2 == g);
+	}
+
+	// ---- B1: focus overrides a unit's own wounded preference --------------
+	{
+		std::vector<candidate> in_range;
+		in_range.push_back({w.unit(ranged, 0, 40, 0, 110), 5, 40});
+		in_range.push_back({w.unit(ranged, 0, 8, 0, 111), 5, 8});    // this unit would prefer 111
+		const unit_t* focus = in_range[0].unit;                       // but the group says 110
+		const unit_t* t = select_ranged_target(in_range, {}, focus);
+		test("Z17", "unit follows the group target, not its own best", t == focus);
+	}
+
+	// ---- B1: a focus target out of range is still chased ------------------
+	{
+		std::vector<candidate> in_range, out;
+		in_range.push_back({w.unit(ranged, 0, 100, 0, 120), 5, 100});
+		out.push_back({w.unit(ranged, 0, 20, 0, 121), 900, 20});
+		const unit_t* focus = out[0].unit;   // the group decided on the far unit
+		const unit_t* t = select_ranged_target(in_range, out, focus);
+		test("Z18", "focused target is chased even from out of range", t == focus);
+	}
+
+	// ---- B1: a dead focus target falls back to normal choice -------------
+	{
+		std::vector<candidate> in_range;
+		in_range.push_back({w.unit(ranged, 0, 60, 0, 130), 5, 60});
+
+		unit_t dangling{};   // not in any candidate list: simulates a dead target
+		dangling.index = 999;
+		const unit_t* t = select_ranged_target(in_range, {}, &dangling);
+		test("Z19", "unknown focus pointer falls back to local choice", t && t->index == 130);
+	}
+
+	// ---- B2: kiting rules -------------------------------------------------
+	{
+		unit_t* r = w.unit(ranged, 0, 20, 0, 140);   // 20 of 100 hp = wounded
+		r->ground_weapon_cooldown = 20;
+		test("Z20", "wounded ranged unit kites while reloading", should_kite(r));
+		r->ground_weapon_cooldown = 10;
+		test("Z21", "kiting stops at cooldown 9 (10 -> still kites)", should_kite(r));
+		r->ground_weapon_cooldown = 9;
+		test("Z22", "kiting stops at cooldown 9 exactly", !should_kite(r));
+		r->ground_weapon_cooldown = 0;
+		test("Z23", "a loaded weapon never kites", !should_kite(r));
+	}
+	{
+		unit_t* r = w.unit(ranged, 0, 90, 0, 141);   // healthy
+		r->ground_weapon_cooldown = 20;
+		test("Z24", "healthy ranged units never kite", !should_kite(r));
+	}
+	{
+		unit_t* m = w.unit(melee, 0, 5, 0, 142);     // badly wounded melee
+		m->ground_weapon_cooldown = 20;
+		test("Z25", "melee units never kite even when wounded", !should_kite(m));
+	}
+	{
+		// harness-measured: 60% is not wounded, 40% is
+		unit_t* a = w.unit(ranged, 0, 60, 0, 143);
+		unit_t* b = w.unit(ranged, 0, 40, 0, 144);
+		test("Z26", "wounded threshold is below 50% of hp+shields", !is_wounded(a) && is_wounded(b));
+		unit_t* c = w.unit(ranged, 0, 40, 40, 145);   // 80 of 100 total
+		test("Z27", "shields count towards not being wounded", !is_wounded(c));
+	}
+
+	// ---- B2: kite direction is away from the threat ----------------------
+	{
+		const xy pos = kite_position({100, 100}, {50, 100}, 40);
+		test("Z28", "kite step moves away from the threat", pos.x == 140 && pos.y == 100);
+		const xy same = kite_position({100, 100}, {100, 100}, 40);
+		test("Z29", "kite from the same point still yields a step", same.x == 140);
+		const xy diag = kite_position({100, 100}, {100, 60}, 40);
+		test("Z30", "kite step is clamped to the requested distance",
+			diag.x == 100 && diag.y == 140);
+	}
+
+	// ---- no retreat: nothing in the policy ever reduces aggression --------
+	{
+		// A badly outnumbered, badly wounded unit still gets a target; there is
+		// deliberately no "flee" branch (B4: a zombie always attacks).
+		std::vector<candidate> many;
+		for (int i = 0; i != 10; ++i) many.push_back({w.unit(melee, 0, 100, 0, 150 + i), 1 + i, 100});
+		const unit_t* t = select_melee_target(many);
+		test("Z31", "no retreat: outnumbered units still attack", t != nullptr);
 	}
 
 	printf("\n%d/%d passed\n", total - failures, total);

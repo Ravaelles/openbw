@@ -130,6 +130,7 @@ int main(int argc, char** argv) {
 	const int b1 = alive_units(st, b);
 	snprintf(detail, sizeof detail, "slot %d: %d -> %d, slot %d: %d -> %d", a, a0, a1, b, b0, b1);
 	test("M05", "units die during the bot run", a1 < a0 || b1 < b0, detail);
+	if (a1 == a0 && b1 == b0) printf("     (detail) %s\n", detail);
 
 	// A differential check: the same map, same frames, NO bot. Maps with a
 	// "Elapsed time -> Defeat" trigger lose units on their own (measured:
@@ -157,6 +158,7 @@ int main(int argc, char** argv) {
 			a, ca0, ca1, b, cb0, cb1);
 		const bool maps_own_losses = (ca1 < ca0) || (cb1 < cb0);
 		const bool bot_changed = (a1 != ca1) || (b1 != cb1);
+		printf("     (bot) slot %d %d->%d, slot %d %d->%d\n", a, a0, a1, b, b0, b1);
 		test("M06", "bot output differs from an un-driven match (control run)",
 			!maps_own_losses || bot_changed, d2);
 	}

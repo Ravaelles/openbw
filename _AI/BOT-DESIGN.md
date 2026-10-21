@@ -204,3 +204,58 @@ Two traps caught by this test:
    bot and require the outcome to differ.
 2. **Count armed units, not units.** `1Drag` slot 1 owns 139
    `Special_Map_Revealer` helpers with no weapon; a raw count called that a fight.
+
+## 11. Round 2 behaviours (requested)
+
+Rules, as decided (no retreat - a zombie always attacks):
+
+| # | behaviour | rule |
+|---|---|---|
+| B1 | **focus fire** (ranged) | ranged units in a group aim at the same wounded target: the tick driver assigns targets for the group before issuing orders, so several units do not each pick a different enemy |
+| B2 | **kiting** (ranged, wounded only) | a *wounded* ranged unit (hp+shields below `wounded_fraction` of its max) backs off while its weapon is on cooldown, **only until** `weapon_cooldown >= 9`; it never kites while able to fire |
+| B3 | **group movement** (rally point) | units with no enemy to attack move to a shared rally point instead of standing still |
+| B4 | no retreat on unfavourable odds | deliberately absent: the bot always attacks |
+
+Engine fact used: `unit_t::ground_weapon_cooldown` counts **down** every frame
+(`bwgame.h:1267`) and 0 means "can fire now"; it is set to the weapon cooldown
+after each shot (`:2934`).
+
+
+## 12. Round 2 implemented (B1-B3) and the honest test result
+
+Implemented in `bots/zombie_bot.h`:
+
+| # | behaviour | how |
+|---|---|---|
+| B1 | focus fire (ranged) | `select_group_ranged_target` picks one enemy per tick; every ranged unit receives it as `focus` in `select_ranged_target`, which honours it even from out of range |
+| B2 | kiting (ranged, wounded) | `is_wounded` (< 50% of hp+shields) and `should_kite` (only while `ground_weapon_cooldown > 9`); `kite_position` steps 64 px directly away from the nearest threat |
+| B3 | group movement | `rally_point` = centre of mass of the owner's combatants; units with no enemy move there |
+| B4 | no retreat | deliberately absent; verified by Z31 (an outnumbered unit still gets a target) |
+
+31 policy tests pass, including the exact kiting boundaries Z20-Z23
+(cooldown 20 -> kites, 10 -> kites, 9 -> stops, 0 -> never).
+
+### The integration test now fails, and it is right to
+
+```
+(bot)     slot 0 10->10, slot 1 154->0
+no bot:   slot 0 10->10, slot 1 154->0
+```
+
+Measured cause: on `GenericTwoBases` slot 0 spawns at `1376,2246` and slot 1 at
+`320,1824` - about 1080 px apart - and the map's own `Elapsed time -> Defeat`
+trigger wipes slot 1 at frame 312. In 400 frames the two sides never meet, so
+the bot changes nothing and M06 correctly reports it.
+
+**The bot itself is not idle:** after one tick, 8 of 8 armed units hold an
+`AttackUnits` order. What is missing is a map where the sides actually meet
+before the timer runs out.
+
+**Next:** find or build a map with adjacent spawns (a duel map), then M05/M06
+become meaningful. Do not weaken M06 - it is doing its job.
+
+### Test-fixture bug found (again the same class)
+
+The unit-type helper did not set `hitpoints`, so `is_wounded` divided by a
+maximum of 0 and returned false. Three kiting tests failed for that reason, not
+because of the rule. Fixed in the fixture, documented there.
