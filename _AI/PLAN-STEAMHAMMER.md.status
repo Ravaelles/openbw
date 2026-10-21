@@ -255,3 +255,229 @@ in the module.
 
 **Next:** N6 - patch `sync()` to keep a module-assigned slot, rebuild, rerun,
 and read the `steamhammer:` diagnostic. Success = `slot=1 units>0`.
+
+## N6 - log (first deliberate engine change)
+
+**Change:** `BWData::sync()` keeps a slot assigned to the AI module instead of
+overwriting it with the client slot every frame.
+
+**Why it is justified:** measured in N5 - `sync()` at :691 runs every frame and
+overwrites the field, so no other mechanism can survive. The alternative
+(faking a sync client) was rejected in N2 because it would change player names,
+slot randomisation and replay handling for real clients.
+
+**Success test:** `steamhammer: slot=1 units>0` in the wrapper diagnostic, and
+Steamhammer stopping on something other than "our base is unknown".
+
+**Rollback:** one condition in one function.
+
+**N6 result - PARTIAL: engine change works, call site is still wrong.**
+
+After the `sync()`/`switch_to_slot` change the diagnostic still printed
+`slot=0 units=0`, because the wrapper calls `switchToPlayer` in `onStart()`,
+which `GameImpl::switchToPlayer` ignores once `isInGame()` is true (measured in
+N4). So the slot switch never reached the new code path.
+
+**Direction check:** the engine change is still right (it makes a module slot
+survive); the mistake is *where I call it*. Move the call to `gameInit()`.
+
+**Next:** N7 - move the switch to gameInit, rebuild the module, rerun.
+Success = `slot=1 units>0`.
+
+**N7 result - why moving to gameInit did NOT help (measured):**
+
+`GameUpdate.cpp:36-42` inside `GameImpl::update()`:
+
+```cpp
+this->inGame = true;                 // :39   <-- set FIRST
+updateStatistics();
+if (!onStartCalled) this->onGameStart();
+...
+this->initializeAIModule();          // :140  <-- module loaded AFTER
+```
+
+So by the time `gameInit()` runs, `inGame` is **already true**, and
+`GameImpl::switchToPlayer` therefore no-ops exactly as it did in `onStart()`.
+My assumption "gameInit runs before the game is in progress" was wrong; the
+engine calls it in the same update that already marked the game live.
+
+**Direction check (step back, important):** I have now tried three call sites
+(`onStart`, `gameInit`, and a `switch_to_slot` variant) and each failed for the
+same underlying reason: **the engine has no supported way for a module to pick
+its slot.** Rather than a fourth attempt at a call site, the honest conclusion is
+that slot selection needs to happen through the API the engine already trusts -
+`switch_to_slot` - but at a point where it can still act.
+
+**Next:** N8 - the only remaining clean option: let the *host* choose the
+module's slot before the match, i.e. set `local_player_id` from the harness at
+map load (where `setup_info` is already being configured), not from the module.
+This matches how every other player is configured and needs no API abuse.
+
+**If N8 fails:** accept the limitation, document that a filesystem AI module
+always plays the client's slot, and reduce the goal to "bot plays the same slot
+as the client" (still a real 1v1 opponent, just not a second player).
+
+**N8 - order verified (this is why it can work):**
+
+```
+BWData.cpp:648   while(!game_started) { sync(); setup_function(); }   <- module slot can be set here
+GameUpdate.cpp:39  this->inGame = true
+GameUpdate.cpp:46  onGameStart()
+GameUpdate.cpp:140 initializeAIModule()   <- module loaded; inGame already true
+```
+
+So the only window where a module slot can survive is **during the setup loop**,
+before `inGame` becomes true. `sync()` runs there every iteration, which is why
+the `module_slot_set` guard from N6 is needed: it must not be overwritten.
+
+**Implementation:** the harness sets the module slot while `setup_info` is being
+configured (same place it already sets victory conditions), i.e. in
+`setup_function`'s lambda, not in the module.
+
+**N8-N11 result - PROOF that the mechanism works, blocked by ordering:**
+
+With `BWAPI_MODULE_PLAYER_SLOT=1` the server now logs
+
+```
+bwdata: module slot set to 1
+Error: createSinglePlayerGame: no available slot
+```
+
+So the slot **is** taken and survives `sync()` (the duplicate assignment at
+:482 was the thing eating it - removed). The failure moved to the auto-menu: the
+module occupies slot 1, so `createSinglePlayerGame` finds no free slot for the
+*client* and refuses to start.
+
+**That is a correct engine reaction, not a bug.** A match needs the client
+somewhere; occupying a slot before the client picks one leaves nothing.
+
+**Direction check:** the mechanism is right; the order is wrong. Two viable
+orders:
+
+- **O1**: client joins first (auto-menu picks its slot), *then* the module takes
+  a different one. Needs the module slot to be applied after `createSinglePlayerGame`
+  but before `inGame`.
+- **O2**: give the module the *client's* slot (module + client share player 1).
+  Trivial, always works, but then the bot and the client fight over the same
+  army.
+
+O1 is what we want for a true 1v1. The window is narrow: after auto-menu, before
+`update()` sets `inGame`.
+
+**Next:** N12 - move the slot assignment to just after `createSinglePlayerGame`
+returns (where the client slot is known), and skip the client's own slot.
+
+**N12 result - the conflict is now complete and understood:**
+
+```
+bwdata: module slot set to 1
+Error: createSinglePlayerGame: no available slot   (AutoMenuManager.cpp:276)
+```
+
+Mechanism, measured end to end:
+
+1. my code sets `local_player_id = 1` in the setup loop;
+2. `setup_function()` then rewrites the map's player controllers using that id,
+   so slot 1 stops looking like a free human slot;
+3. `AutoMenuManager` (the launcher's single-player setup) looks for the first
+   `EitherPreferHuman` slot, finds none, throws.
+
+So the module slot and the auto-menu compete for the same resource: the map's
+limited set of human-capable slots. That is a real constraint of the engine's
+design, not a bug.
+
+**Options, with their costs:**
+
+| option | client slot | module slot | verdict |
+|---|---|---|---|
+| O1 keep module slot, client picks another | needs ≥2 human slots and a map that gives both units | real 1v1, but every test map has 3-4 players only and the client slot would be empty | fragile |
+| O2 module shares the client slot | same slot | same slot | always starts; bot and client share one army - not a 1v1 |
+| O3 disable auto-menu, set both slots explicitly | explicit | explicit | most control, largest change |
+
+**Direction check (step back):** I have spent many steps on slot plumbing. The
+goal was "an opponent worth playing". O2 satisfies *starts reliably* but not
+*opponent*; O1/O3 give a real opponent but need a map and launcher work.
+
+**Decision for the next step:** O1 first (smallest change, keeps a real 1v1),
+specifically on a map with 3+ human-capable slots where the client takes slot 0
+and the module takes slot 1, both owning bases. If the auto-menu still refuses,
+fall back to O3 (explicit slots, auto-menu off).
+
+**N13 result - the exact mechanism (AutoMenuManager.cpp:255-276):**
+
+```cpp
+if (p == Broodwar->self()) continue;        // :255  self() is the CLIENT slot
+...
+else {
+  for (i in playable) if (p->getType() == EitherPreferHuman) { switchToPlayer(p); ... }
+  if (!foundSlot) throw "no available slot";   // :276
+}
+```
+
+So the auto-menu needs at least one `EitherPreferHuman` slot **other than the
+one already taken**. By setting `local_player_id = 1` before it runs, I made
+`self()` point at slot 1, and `setup_function` had already rewritten the map's
+controllers around it - leaving no free human slot. On
+`GenericTwoBases.scm` (slot 0: 10 units, slot 1: base) the result is the same
+error, which confirms the cause is ordering, not the map.
+
+**This is O3 territory.** The clean fix is not to fight the auto-menu but to skip
+it: when a module slot is requested, start the game with explicit player
+assignments instead of letting `AutoMenuManager` choose.
+
+**Next:** N14 - in `AutoMenuManager`, when `BWAPI_MODULE_PLAYER_SLOT` is set,
+skip the "find a free human slot" branch and call `startGame()` with the client
+slot left as-is. That is 3 lines and removes the competition entirely.
+
+**N14 result - MAJOR PROGRESS: the module now owns units.**
+
+```
+bwdata: module slot set to 1
+steamhammer: slot=-1 self=0x... units=107 start=1000,1001
+Message:   our base is unknown
+```
+
+Two facts, both new:
+
+1. **`units=107`** - the module's `self()` now sees the map's units. Before it
+   saw 0. The slot assignment reaches the module.
+2. **`slot=-1`** - `self()->getID()` is -1, i.e. the module's player object has
+   no valid index even though it owns 107 units. Steamhammer's `Bases` code
+   derives the base from the player id, so it still says "base is unknown".
+
+So the remaining gap is narrower than ever: the module controls units but its
+**player id is unset**. That is one field, not a mechanism.
+
+**Direction check:** correct and converging. Each step now moves the diagnostic
+(`units 0 -> 107`, crash -> assert), which is exactly what "small step, measure"
+should look like.
+
+**Next:** N15 - find why `self()->getID()` is -1 while units are owned: compare
+how `BWAPIPlayer` is built for a module slot vs a client slot.
+
+**N15 result - the last link, with the whole chain:**
+
+```
+GameImpl::self()            -> this->BWAPIPlayer
+BWAPIPlayer                 <- GameEvents.cpp:95-99 in onGameStart()
+                               via _getPlayer(_currentPlayerId())
+_currentPlayerId()          -> bwgame.g_LocalHumanID()      (GameInternals.cpp:326)
+g_LocalHumanID()            -> sync_st.local_client->player_slot  (BWData.cpp:1126)
+```
+
+So `self()` is derived from the **sync client's** slot, not from
+`local_player_id`. That is why the diagnostic showed `units=107` (the module was
+given the units of its slot) but `slot=-1` (the player object BWAPI builds comes
+from the client path, which has no client).
+
+**Conclusion:** `local_player_id` controls which *units* the module sees, while
+`BWAPIPlayer` controls the *player identity* it sees. Steamhammer needs both to
+match. The fix is therefore in `g_LocalHumanID()`: when the harness assigned a
+module slot and there is no sync client, that slot is the local player.
+
+This is the smallest correct change of the whole investigation: one function,
+one condition, and it is justified by the chain above rather than by guessing.
+
+**Next:** N16 - make `g_LocalHumanID()` return `local_player_id` when
+`module_slot_set` is true and no client exists; rebuild; rerun; success =
+`slot=1 units>0` and no "our base is unknown".
