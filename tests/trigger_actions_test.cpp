@@ -233,19 +233,26 @@ int main(int argc, char** argv) {
 		test("A11", "kill any-unit does not throw", ok);
 	}
 
-	// A12 - "Move location" shifts a region and keeps its size.
-	{
-		if (st.locations.empty()) {
-			test("A12", "move location keeps size", true);
-		} else {
-			auto before = st.locations[0].area;
-			f.run(0, make_action(38, 0, 1, 0, 0, 1));
-			auto after = st.locations[1].area;
-			bool size_kept = (after.to.x - after.from.x) == (before.to.x - before.from.x);
-			test("A12", "move location keeps region size", size_kept,
-				fmt("dx %d -> %d", before.to.x - before.from.x, after.to.x - after.from.x));
-		}
+// A12 - "Move location" keeps the TARGET region's size and keeps it
+// inside the map (verified against the trigger reference: the moved
+// location keeps its size, it is not resized to the source - see
+// scmjs.dev/triggers/move-location and _AI/BUGS.md BUG-6).
+{
+	if (st.locations.size() < 2) {
+		test("A12", "move location keeps size", true);
+	} else {
+		auto before = st.locations[1].area;
+		f.run(0, make_action(38, 0, 2, 0, 0, 1));
+		auto after = st.locations[1].area;
+		bool size_kept = (after.to.x - after.from.x) == (before.to.x - before.from.x)
+			&& (after.to.y - after.from.y) == (before.to.y - before.from.y);
+		test("A12", "move location keeps target size", size_kept,
+			fmt("dx %d -> %d, dy %d -> %d", before.to.x - before.from.x, after.to.x - after.from.x, before.to.y - before.from.y, after.to.y - after.from.y));
+		bool inside = after.from.x >= 0 && after.from.y >= 0;
+		test("A12b", "moved region stays inside the map", inside,
+			fmt("from (%d,%d)", after.from.x, after.from.y));
 	}
+}
 
 	// A13 - action 105 (AI script) is accepted and counted, never throws.
 	{

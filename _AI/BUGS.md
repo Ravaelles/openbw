@@ -151,31 +151,28 @@ omission is visible in one line.
 
 ---
 
-## BUG-6 - "Move location" does not preserve region size
+## BUG-6 - WITHDRAWN: "move location" was a test bug, not an engine bug
 
-**Observed:** `tests/trigger_actions_test.cpp` A12:
-
-```
-FAIL A12 move location keeps region size: dx 160 -> 256
-```
-
-**Cause:** case 38 in `execute_trigger_action()` computes `diff` between the
-source region's centre and the unit position, then adds it to the **target**
-region's corners. When the two regions have different sizes, the result is
-clamped independently per corner (`if (to.x >= map_width) ...`), so width and
-height can change. A trigger that moves a location is expected to translate it.
-
-**Effect:** maps that move a region (e.g. "follow the hero") get a differently
-sized region after the first move, so "bring units to location" starts
-matching areas the mapper never chose. Silent, and only visible several
-triggers later.
-
-**Suggested fix (not applied):** translate the **source** region's size onto the
-target, i.e. set `target = pos +- (source_size / 2)` (or keep the target's size
-and only move its centre), and clamp the whole rectangle as a unit so width and
-height cannot change.
-
----
+> **WITHDRAWN 2026-10-21 (test bug, same class as BUG-10).** The A12
+> failure (`dx 160 -> 256`) never showed a size change: the test drove
+> `source == target` (`make_action(38, 0, 1, 0, 0, 1)` sets both
+> indices to locations[0]) and asserted on `locations[1]`, which the
+> action never touches. Probe output on 1Drag: `src dx 160,
+> untouched-dst dx 256, moved-src dx 160` - the moved region kept its
+> size; the test compared two different static regions. The suggested
+> fix (adopt the *source* size) would have broken real semantics:
+> [Move Location](https://docs.scmjs.dev/triggers/move-location)
+> centres the moved location on the unit and **keeps its size** ("The
+> moved location keeps its size and is kept inside the map";
+> independently: NamuWiki "the location moves to the center of the
+> unit"). The engine already does exactly this, including
+> width-preserving edge clamps (verified branch by branch in
+> `bwgame.h` case 38). A12 now drives source=locations[0],
+> target=locations[1] and pins target-size preservation plus
+> inside-the-map containment; A12b covers the clamp half. Green on
+> both reference maps. Lesson kept: a failing test is a fact about
+> the *test setup* until the indices are re-read - see
+> `__CONVENTIONS.md` section 2, step 2.
 
 ## BUG-7 - "Wait" cannot be tested through the action alone
 
