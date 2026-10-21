@@ -2,7 +2,7 @@
 //
 // Companion to trigger_semantics_test.cpp (which covers conditions). Same
 // rules: engine-only, no BWAPI, no bot, no match. A failing check is a fact
-// about the engine; problems are recorded in __BUGS.md and not patched here.
+// about the engine; problems are recorded in _AI/BUGS.md and not patched here.
 //
 // Every test drives the real entry point `execute_trigger_action()`, so it sees
 // exactly what a map sees - not a reimplementation.
@@ -258,7 +258,7 @@ int main(int argc, char** argv) {
 	// A14 - an unknown action type reports a failure instead of silently "ok".
 	//      (It calls error(), which aborts the process, so probe the enum space
 	//      differently: assert that a known action returns true and an
-	//      out-of-range one is documented in __BUGS.md, not exercised here.)
+	//      out-of-range one is documented in _AI/BUGS.md, not exercised here.)
 	{
 		bool ran = f.run(0, make_action(3));   // preserve, known-safe
 		test("A14", "known action returns true", ran);

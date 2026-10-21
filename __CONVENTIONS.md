@@ -44,7 +44,7 @@ Consequences:
   2. is the test driving the real entry point?
   3. is the test leaking state from an earlier test?
   4. only then: is the engine wrong?
-- Failures caused by the engine are recorded in `__BUGS.md`; the test stays red
+- Failures caused by the engine are recorded in `_AI/BUGS.md`; the test stays red
   until someone decides to fix it. Never delete a test to get a green run.
 
 ---
@@ -53,7 +53,7 @@ Consequences:
 
 Recording and fixing are separate acts:
 
-- `__BUGS.md` - defects, each with reproduction and a suggested fix that was
+- `_AI/BUGS.md` - defects, each with reproduction and a suggested fix that was
   **not** applied.
 - Fixes happen only when explicitly asked for, and then the corresponding test
   is flipped from documenting the defect to guarding the fix.
@@ -117,7 +117,8 @@ Recording and fixing are separate acts:
 | file | purpose |
 |---|---|
 | `__CONVENTIONS.md` | this file: how we work |
-| `__BUGS.md` | non-obvious facts (N01..) and defects (BUG-xx) |
+| `_AI/BUGS.md` | defects (BUG-xx) with reproduction and suggested fix |
+| `_AI/NON-OBVIOUS-FACTS.md` | measured engine behaviour that surprises you (N01..) |
 | `__SC_DOMAIN_QUESTIONS.md` | every StarCraft domain assumption and its verification status |
 | `tests/run.sh` | builds and runs every suite on several maps |
 | Atlantis `docs/openbw-run-regression.md` | chronological investigation log |

@@ -3,7 +3,7 @@
 // Written to increase understanding, not to prove the engine correct: each test
 // states what the engine is *observed* to do, so a change in behaviour shows up
 // here first. Failures are facts; anything that looks wrong is recorded in
-// __BUGS.md, never patched in this file.
+// _AI/BUGS.md, never patched in this file.
 //
 // Blocks:
 //   I001-I025  unit types: combat stats and flags

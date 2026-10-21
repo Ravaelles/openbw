@@ -6,7 +6,7 @@
 //
 // Every test prints one line: "ok Tnn <what>" or "FAIL Tnn <what>: <detail>".
 // A failure is a fact about the engine, not a reason to change this file:
-// behaviour that looks wrong is recorded in __BUGS.md, not patched here.
+// behaviour that looks wrong is recorded in _AI/BUGS.md, not patched here.
 //
 // Build (repo root):
 //   g++ -std=c++17 -O2 -I. tests/trigger_semantics_test.cpp -o build/trigger_semantics_test -lz -lbz2

@@ -171,7 +171,7 @@ is not "fixed" later.
 `unit_size` is **1 = small, 2 = medium, 3 = large, 0 = special** (measured:
 Marine/Zealot/Zergling = 1, Dragoon/Nexus = 3). The explosive damage branch
 tests 0/1/2 and the concussive branch tests 0/2/3 - they cannot both be right.
-See __BUGS.md BUG-9. **Not resolved**: which numbering StarCraft's own engine
+See _AI/BUGS.md BUG-9. **Not resolved**: which numbering StarCraft's own engine
 uses is not documented on Liquipedia.
 
 ---

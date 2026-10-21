@@ -5,7 +5,7 @@
 // resource bookkeeping, map geometry and UMS setup defaults.
 //
 // Same rules as the other suites: engine-only, no BWAPI, no bot, and a failing
-// check is a fact about the engine. Anything broken is recorded in __BUGS.md,
+// check is a fact about the engine. Anything broken is recorded in _AI/BUGS.md,
 // never patched here.
 //
 // Build (repo root):

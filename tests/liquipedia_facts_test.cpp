@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
 		}
 		// [ENGINE BUG] This fails on M&M_v_ZealDrag: unit type 124 is created with
 		// a 25600 raw (100 fp8) shield pool although has_shield == 0. See
-		// __BUGS.md BUG-8. Left red on purpose - it documents the defect.
+		// _AI/BUGS.md BUG-8. Left red on purpose - it documents the defect.
 		test("L29", "spawned non-Protoss units have zero shields (BUG-8)", ok, bad);
 	}
 	// A Protoss unit may legitimately start with shields; the field is fp8, so
