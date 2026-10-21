@@ -31,7 +31,7 @@ bins=()
 cleanup() { for b in "${bins[@]}"; do rm -f "$b"; done; }
 trap cleanup EXIT
 
-for suite in engine_behaviour_test trigger_semantics_test trigger_actions_test state_and_data_test engine_invariants_test liquipedia_facts_test; do
+for suite in engine_behaviour_test trigger_semantics_test trigger_actions_test state_and_data_test engine_invariants_test liquipedia_facts_test combat_rules_test; do
   [ -f "$here/$suite.cpp" ] || continue
   bin="$(mktemp -t "$suite.XXXXXX")"
   echo "building $suite"

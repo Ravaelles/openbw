@@ -146,6 +146,36 @@ the loader is not field-shifted.
 
 ---
 
+## C3. VERIFIED for the C-series (combat rules)
+
+| fact | value | source |
+|---|---|---|
+| Marine ground/air damage | 6, normal | [Marine](https://liquipedia.net/starcraft/Marine) |
+| Marine supply | 1 | [Marine](https://liquipedia.net/starcraft/Marine) |
+| Zealot damage | 8x2, normal, small unit | [Zealot](https://liquipedia.net/starcraft/Zealot) |
+| Dragoon damage | 20, explosive, large unit | [Dragoon](https://liquipedia.net/starcraft/Dragoon) |
+| Zergling damage | 5, normal, small unit | [Zergling](https://liquipedia.net/starcraft/Zergling) |
+| Concussive multipliers | 100/50/25 vs small/medium/large | [Damage Type](https://liquipedia.net/starcraft/Damage_Type) |
+| Explosive multipliers | 50/75/100 vs small/medium/large | [Damage Type](https://liquipedia.net/starcraft/Damage_Type) |
+| Supply Depot | 500 hp, 100 min, +8 supply, armor 1 | [Supply Depot](https://liquipedia.net/starcraft/Supply_Depot) |
+
+### Cleared up: "8x2" is not two bullets
+
+Liquipedia writes the Zealot attack as `8x2`, but `units.dat` has damage 8 with
+`bullet_count == 1`. The `x2` is the two-swing animation, not two projectiles.
+C06 asserts the data (`8 damage, 1 bullet`) and records this here so the number
+is not "fixed" later.
+
+### Unresolved: unit_size numbering
+
+`unit_size` is **1 = small, 2 = medium, 3 = large, 0 = special** (measured:
+Marine/Zealot/Zergling = 1, Dragoon/Nexus = 3). The explosive damage branch
+tests 0/1/2 and the concussive branch tests 0/2/3 - they cannot both be right.
+See __BUGS.md BUG-9. **Not resolved**: which numbering StarCraft's own engine
+uses is not documented on Liquipedia.
+
+---
+
 ## D. Remaining assumptions to confirm before trusting the tests
 
 These are currently written as **ENGINE DATA** (they describe what the loader
