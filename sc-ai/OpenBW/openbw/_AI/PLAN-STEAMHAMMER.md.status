@@ -1,0 +1,123 @@
+# Steamhammer integration - live status
+
+Plan: `_AI/PLAN-STEAMHAMMER.md`.
+Branch: `feature/use-steamhammer-as-native-ai`.
+Rule: one small step, measure, record. Stop and reassess when two steps in a row
+fail to produce new information.
+
+---
+
+## Where we are (honest)
+
+**Steamhammer builds and loads. It cannot start because the engine gives an
+external AI module no player slot.**
+
+That is a single, well-defined blocker - not a chain of unknowns. Everything
+before it is done and verified.
+
+### Done and verified
+
+| step | result | evidence |
+|---|---|---|
+| S1 inventory | sources present locally, 145 .cpp, depends only on BWAPILIB | `test/3rdparty/opponents/Steamhammer` |
+| S2 vendor | copied verbatim to `3rdparty/Steamhammer/` + `README.upstream.md` | committed |
+| S3 loader contract | engine `dlopen`s the module and looks up `newAIModule` + `gameInit` | `GameUpdate.cpp:425-470` |
+| S4 POSIX entry | `Steamhammer-integration/Dll_posix.cpp` exports both, defines `BWAPI::BroodwarPtr` | `nm -D` shows both defined |
+| S5 Linux build | `libSteamhammer.so` builds from unmodified upstream | `cmake --build`, no patches to `Steamhammer/Source` |
+| S6 dlopen | `dlopen(RTLD_NOW)` succeeds, both symbols found | `/tmp/ldtest` |
+| S7 module runs | wrapper `onStart()` executes, then Steamhammer's `onStart()` | gdb backtrace: `UAlbertaBotModule::onStart` -> `ParseUtils::ParseConfigFile` |
+
+### The blocker, precisely
+
+```
+Steamhammer::onStart -> ParseConfigFile -> BWAPI::Broodwar->self()->getRace()
+                                            ^^^^^^^^^^^^^^^^^^^^^^^ nullptr
+```
+
+`self()` is null because an AI module loaded from a file is **not a sync
+client**. Measured chain:
+
+1. `BWAPIPlayer` is built from `g_LocalHumanID()` -> `vars.local_player_id`.
+2. `vars.local_player_id` is set in `sync()` from
+   `sync_funcs.sync_st.local_client->player_slot`.
+3. With `noop_server` (no client) there is no `local_client`, and
+   `game_started` never becomes true, so the id stays `-1`.
+4. `Game::switchToPlayer` -> `BWData::switch_to_slot` is a no-op in that state
+   (`local_client->player_slot` is the thing it compares).
+
+**Two unproven edits I made and then reverted** (they were guessing, not
+diagnosis): a null-guard in `sync()` and a `switch_module_to_slot()` helper.
+Both removed; the tree is back to its previous, building state. Recorded here so
+nobody repeats them without understanding step 3 first.
+
+---
+
+## Challenges (identified, not yet solved)
+
+| # | challenge | why it matters | how to settle it |
+|---|---|---|---|
+| C1 | No slot without a sync client | blocks any third-party BWAPI module, not just Steamhammer | decide *where* a module-only slot should come from |
+| C2 | `game_started` never true under `noop_server` | the init loop `while (!game_started) sync(noop_server)` never exits; unrelated code may depend on it | read that loop and its callers before touching it |
+| C3 | Slot ownership vs map | a slot must both exist (map) and own units (map), or Steamhammer has nothing to command | reuse the slot findings already measured |
+| C4 | Who plays the *other* side | one module drives one slot; the opponent is either another module or a client | decide: two modules, or module + our existing client |
+| C5 | Steamhammer config/`self()` assumptions | it assumes a human-like slot with a start location | pick a map that gives the slot a base |
+| C6 | Build reproducibility | the `.so` is currently built in `/tmp` | add the build to a script and to CI-style checks |
+
+---
+
+## Next steps, small and ordered
+
+Each step must produce **new information** or be abandoned.
+
+### N1 - understand the init path before changing it (read only, 15 min)
+Read `BWData.cpp` around the `while (!game_started)` loop and list every reader
+of `game_started` and `local_player_id`. Output: a short note in this file.
+**No code changes.** If the loop turns out to be dead code, C2 collapses.
+
+### N2 - choose the minimal slot mechanism (design, no code)
+Two candidates, pick one on evidence:
+- **A**: give the module a slot at attach time (engine sets
+  `local_player_id` when `externalModuleConnected` and no client), or
+- **B**: run the module *as* the client (attach it through the sync path).
+Write the choice and the reason here. **A** is smaller; **B** is more faithful.
+
+### N3 - implement A or B (one edit, then measure)
+Success: `self()` non-null in `onStart`, i.e. `ParseConfigFile` passes the race
+call. Test: run the same map, check the crash is gone. If it moves further into
+Steamhammer, that is progress, not failure.
+
+### N4 - give the bot units
+Pick a map where the bot's slot owns a base (measured with `/tmp/probe_self`).
+Success: Steamhammer logs a build order decision.
+
+### N5 - first real orders
+Success: Steamhammer issues a gather/build order; verify in engine state
+(worker count, structure count) rather than in logs alone.
+
+### N6 - opponent side
+Decide C4. Success: a full match where both sides act.
+
+### N7 - package
+`scripts/build-steamhammer.sh` + `scripts/run-openbw-steamhammer.sh <map>`.
+Success: one command, documented in the README.
+
+---
+
+## What NOT to do
+
+- Do not patch `3rdparty/Steamhammer/**` to work around engine gaps.
+- Do not add null-guards around `local_client` without understanding N1 - I
+  already did that twice and it produced nothing.
+- Do not claim "AI works" until N5 succeeds with measured engine state.
+
+---
+
+## Knowledge that must not be lost
+
+- `BWAPI::BroodwarPtr` is declared `extern` but defined by every module; a
+  module that forgets it links and then crashes.
+- AI modules link `libBWAPILIB.so` (client API), **not** `libBWAPI.so` (engine).
+  This was the single biggest time sink.
+- `BOSS/source/deprecated` holds a Windows-only duplicate of `BOSSAssert.cpp`.
+- Steamhammer needs `bwapi-data/AI/Steamhammer_2.4.2.json` relative to the game
+  directory; without it `ParseConfigFile` fails before anything else.

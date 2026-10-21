@@ -5,13 +5,14 @@ Rule: one step at a time, small cycles, measure before assuming.
 
 | step | state | result |
 |---|---|---|
-| S1 inventory sources | TODO | |
-| S2 copy into 3rdparty/Steamhammer | TODO | |
-| S3 first build, record exact error | TODO | |
-| S4 missing symbols / API drift | TODO | |
-| S5 link against our libBWAPI, produce .so | TODO | |
-| S6 load module in launcher (onStart runs) | TODO | |
-| S7 slot + units for the bot | TODO | |
+| S1 inventory sources | DONE | 145 .cpp, deps: BWAPILIB only, BOSS+Steamhammer |
+| S2 copy into 3rdparty/Steamhammer | DONE | verbatim + README.upstream.md, committed |
+| S3 first build, record exact error | DONE | engine loads via dlopen and needs dlsym "newAIModule"+"gameInit"; Steamhammer declares them with __declspec(dllexport) in Dll.cpp, excluded from the build - Windows-only entry point |
+| S4 port entry point to POSIX | DONE | integration/Dll_posix.cpp: extern "C" + visibility default, defines BWAPI::BroodwarPtr (extern in the header, every module must define it) |
+| S5 link against our libBWAPI, produce .so | DONE | must link libBWAPILIB.so (client API), NOT libBWAPI.so (engine) - that was the key mistake; also exclude BOSS/source/deprecated (Windows-only duplicate BOSSAssert) and StarCraftGUI |
+| S6 load module in launcher (onStart runs) | DONE (dlopen) | libSteamhammer.so loads with RTLD_NOW; dlsym finds newAIModule and gameInit; DT_NEEDED -> libBWAPILIB.so |
+| S7 launch it from BWAPILauncher | DONE (module runs) | module loads, wrapper onStart() runs, Steamhammer's onStart() executes; crashes in ParseConfigFile because Broodwar->self() is null |
+| S7b give the module a player slot | BLOCKED BY ENGINE | switchToPlayer is a no-op without a sync client: BWData::switch_to_slot needs sync_funcs.sync_st.local_client->player_slot, and with noop_server game_started never becomes true, so local_player_id stays -1. Engine change required (see S7c). |
 | S8 full match, kills > 0 | TODO | |
 | S9 run script | TODO | |
 | S10 docs + commit | TODO | |
