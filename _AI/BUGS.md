@@ -275,3 +275,36 @@ I treated the absence of the fact as a negative answer - then marked it
 rule added after this.
 
 No code or data change is warranted. P17 now asserts 1 supply.
+
+---
+
+## BUG-11 - `damage_size_multiplier` did not compile (parameter shadowed its type)
+
+**Observed while building the T-series tests:**
+
+```
+bwgame.h:13720: error: expected ')' before '(' token
+```
+
+**Cause:** the helper added for the size-multiplier work declared
+
+```cpp
+static fp8 damage_size_multiplier(weapon_type_t::damage_type damage_type, int unit_size)
+```
+
+The parameter name `damage_type` shadows the type name used earlier in the same
+declaration, so the compiler cannot parse the parameter list. The body compared
+`damage_type == damage_type_concussive`, which then reads as a member access on
+the parameter.
+
+**Effect:** the whole translation unit fails to compile - every test and the
+harness itself. Nobody noticed because the tree was not built between the change
+and this batch.
+
+**Fix applied:** the parameter is now `int dt` (the field is a plain `int` in
+`weapon_type_t`, not an enum). Kept here because it shows the failure mode: a
+change that "looks like refactoring" can leave the tree unbuildable, and only a
+compile gate catches it.
+
+**Suggested process addition:** run `tests/run.sh` (which builds everything)
+before any commit that touches `bwgame.h`.

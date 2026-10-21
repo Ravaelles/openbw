@@ -273,6 +273,41 @@ that places providers.
 
 ---
 
+## Techs and abilities (T-series)
+
+Source: [Stim Pack](https://liquipedia.net/starcraft/Stim_Pack)
+
+| fact | quote | status | test |
+|---|---|---|---|
+| Stim Pack 100 minerals / 100 gas | `100` / `100` | READ | T01, T02 |
+| Stim Pack is Terran | `Terran` | READ | T05 |
+| cost per use: 10 hp | `10 HP` | READ | (not asserted: no hp-cost field) |
+| +50% speed, halved cooldown | `faster` | READ | T06, T07 (base values only) |
+
+### Stim Pack is a TECH, not an upgrade
+
+`TechTypes::Stim_Packs` is id 0 of the tech table with a 1200-frame research
+time. It is **not** in `upgrade_types`. My first version of the T-series looked
+for `UpgradeTypes::Stim_Packs` and failed to compile; the enum split is the
+lesson, now written into the test.
+
+### Measured tech-table facts
+
+```
+priced techs             : 38
+techs at 100/100         : 15   (the standard "basic ability" price)
+techs with race 3        : 10   (campaign/neutral, e.g. id 26 at 150 minerals)
+Stim Pack research time  : 1200 frames
+tech state storage       : TechTypes -> bool per player (`tech_researched`)
+```
+
+Two assumptions of mine were wrong and are now recorded as such:
+
+- "the 100/100 tech is unique" - 15 techs share that price (T08 corrected)
+- "all priced techs have a playable race tag" - 10 carry race 3 (T26 corrected)
+
+---
+
 ## Terms that are easy to confuse (learned from errors)
 
 | term | means | not |
