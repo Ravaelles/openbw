@@ -176,6 +176,42 @@ uses is not documented on Liquipedia.
 
 ---
 
+## C4. VERIFIED for the U-series (upgrades)
+
+Source: [Liquipedia: Upgrades](https://liquipedia.net/starcraft/Upgrades)
+
+| fact | value | test |
+|---|---|---|
+| numerical upgrades have 3 tiers | 3 | U11, U13 |
+| Protoss Ground Weapons L1 | 100 minerals / 100 gas | U09, U10 |
+| Protoss Ground Armor L1 | 100 minerals | U12 |
+| Protoss Plasma Shields L1 | 200 minerals | U14 |
+| Terran Infantry Weapons L1 | 100 / 100 | U15, U16 |
+| Zerg Carapace L1 | 150 / 150 | U17, U18 |
+| armor upgrades cost >= attack upgrades | true | U19 |
+
+### Clarified: not every upgrade has three levels
+
+Measured histogram over the 61 upgrade entries in `upgrades.dat`:
+
+```
+max_level 0 : 11   (unused slots)
+max_level 1 : 34   (single-level abilities, e.g. Stim Pack)
+max_level 3 : 16   (numerical upgrades: weapons, armor, shields, carapace)
+```
+
+"Most upgrades have 3 levels" is false and U04 was corrected. What *is* true and
+verified: the **numerical** upgrades have exactly 3 tiers, and those are the ones
+Liquipedia describes as three-tier.
+
+### Note: unused slots are not upgrades
+
+The 11 entries with `max_level == 0` are empty placeholders. They also have a
+zero research time and race id 3 ("none"), which is why U29 now asserts "every
+**real** upgrade has a research time" instead of "every row".
+
+---
+
 ## D. Remaining assumptions to confirm before trusting the tests
 
 These are currently written as **ENGINE DATA** (they describe what the loader
