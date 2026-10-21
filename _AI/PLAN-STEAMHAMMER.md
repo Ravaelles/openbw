@@ -6,6 +6,47 @@ Written: 2026-10-20, because the working context was about to end.
 
 ---
 
+## 0a. Why a real bot matters (the decision this plan is built on)
+
+The purpose is **not** to reproduce StarCraft's native AI. The purpose is to
+have **some opponent worth playing against**, so that the engine can be used for
+real games and real testing.
+
+If an existing bot cannot be integrated, the fallback is to write one - and that
+fallback is far weaker than it sounds:
+
+| fallback behaviour | problem |
+|---|---|
+| send workers to mine by hand | no economy decisions - the "game" is a script |
+| build structures at arbitrary points | no placement, no tech order, no defence |
+| produce a random unit mix | no counter-play, no composition, no timing |
+| attack the enemy in zombie waves | no scouting, no retreat, no micro |
+
+Such a bot would be a **motion test, not an opponent**. It would exercise our
+engine's order plumbing and little else: it would never expose AI-relevant
+problems (pathing under congestion, target selection, supply blocking, attack
+timing), because it makes none of those decisions. Every test built on it would
+prove "orders reach units", not "units can fight".
+
+Using a real, mature bot such as Steamhammer solves this in one step:
+
+- it already implements economy, build orders, scouting, combat and micro;
+- it is built against BWAPI, which is the interface our engine already exposes;
+- it exercises the engine the way a human would, so its failures point at real
+  gaps in our implementation;
+- it is a **known-good adversary**: when a match goes wrong we can tell whether
+  the engine or the map is at fault, because the bot's behaviour is understood.
+
+So the cost of integration (a build, an ABI check, a slot to play in) buys a
+working opponent. Writing our own would cost similar effort and still produce
+something that plays worse than a zombie wave.
+
+**Therefore:** integrating Steamhammer/UAlbertaBot is the primary path. A
+hand-rolled bot exists only as a last resort, and if it is ever written it must
+be described as what it is - a driver for order plumbing, not an opponent.
+
+---
+
 ## 0. Goal
 
 Host a 1v1 on OpenBW where the **opponent** is Steamhammer, not the (missing)
@@ -190,6 +231,9 @@ which sets `BWAPI_CONFIG_AI__AI` to the built module and the game type to
 
 - It does not implement the native StarCraft AI. `skipped_native_ai_orders`
   stays as the signal for maps that need it (BUG-12).
+- **But that is not the goal** (section 0a). We need a capable opponent, not
+  parity with Blizzard's AI. Steamhammer being external is an advantage, not a
+  workaround: it is the same interface a human client uses.
 - It does not make Steamhammer part of `bwgame.h`. It stays an external client.
 - It does not touch Atlantis.
 
