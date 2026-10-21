@@ -193,3 +193,59 @@ whether it recovers we must give it a real base **and** let it run for a while.
 **Next (R4):** run with a client that stays connected (Atlantis, not the probe)
 on `GenericTwoBases.scm`, and watch for the first `Build order` / worker count
 change over ~60 s.
+
+---
+
+## R4 - answer to "can it play on unit-only test maps?"
+
+**Short answer: not as-is, and the reason is not a bug.**
+
+### What actually happens now (measured, full backtrace)
+
+With the module attached and no other client:
+
+```
+#0 UAlbertaBot::ParseUtils::ParseConfigFile
+#1 UAlbertaBot::UAlbertaBotModule::onStart
+#2 SlotAssigningModule::onStart          (6 frames deep, all ours)
+```
+
+The first statement of `ParseConfigFile` is
+
+```cpp
+const std::string ourRaceStr(BWAPI::Broodwar->self()->getRace().getName());
+const std::string theirRaceStr(BWAPI::Broodwar->enemy()->getRace().getName());
+```
+
+`self()` is fine (measured: `units=11 start=63,46`), **`enemy()` is null**.
+`enemy()` is the first non-ally player with units; a map that gives the module a
+single unit and gives nobody else anything has no enemy, so the dereference is a
+SIGSEGV before the bot ever reaches a frame.
+
+### What that means for our goal
+
+| map kind | works? | why |
+|---|---|---|
+| Base + workers + opponent (a real map) | plausible | self() and enemy() both exist; the bot has an economy to run |
+| Units only, both sides (1v1 fighters, no base) | **crashes** in onStart | `enemy()` exists, but `startingBase` is null - soft assert, bot then idles |
+| Units only, one side | **crashes** in onStart | `enemy()` is null - hard SIGSEGV |
+
+So: Steamhammer is written for **normal StarCraft matches**. It is not a
+"micro AI for 1v1 fighters". Making it drive a units-only test map means
+changing its initialisation (enemy/race defaults, base-less operation, build
+order skipping) - that is a fork, not a configuration.
+
+### Recommendation (decision point, not a step)
+
+1. **Keep Steamhammer for realistic maps.** It is a mature opponent there and
+   costs nothing more to run. Do not spend more time making it play bare maps.
+2. **Write a small purpose-built opponent for the unit-only test maps.** It only
+   needs: find enemies, attack-move, retreat when losing, and it is ~150 lines
+   against APIs we already use (`find_units`, `set_unit_order`). For that test
+   shape it is *the right tool*, not a fallback.
+3. Do not fork Steamhammer to fix `enemy()`/`startingBase`: that path leads into
+   50k lines of assumptions about economy and build orders, which a one-unit
+   map cannot satisfy anyway.
+
+**This supersedes N5-N16:** no engine slot changes are needed for (2), because the
+small bot runs in-process and shares the same player as the map intends.
