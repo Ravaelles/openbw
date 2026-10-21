@@ -93,25 +93,25 @@ Sources: [Probe](https://liquipedia.net/starcraft/Probe), [SCV](https://liquiped
 
 | fact | quote | status | test |
 |---|---|---|
-| Probe 20 hp, 20 shields | `Defense: 20 20` | L01, L02 | NOT-READ |
-| Probe 50 minerals | `Cost: 50` | L03 | NOT-READ |
-| SCV 60 hp, no shields | `Defense: 60 0` | L04, L05 | NOT-READ |
-| SCV 50 minerals | `Cost: 50` | L06 | NOT-READ |
-| Drone 40 hp, no shields | `Defense: 40 0` | L07, L08 | NOT-READ |
-| Drone 50 minerals | `Cost: 50` | L09 | NOT-READ |
-| all three are workers | `Worker` | D12, P02, P34, P43, P29 | NOT-READ |
+| Probe 20 hp, 20 shields | `Defense: 20 20` | L01, L02 | READ |
+| Probe 50 minerals | `Cost: 50` | L03 | READ |
+| SCV 60 hp, no shields | `Defense: 60 0` | L04, L05 | READ |
+| SCV 50 minerals | `Cost: 50` | L06 | READ |
+| Drone 40 hp, no shields | `Defense: 40 0` | L07, L08 | READ |
+| Drone 50 minerals | `Cost: 50` | L09 | READ |
+| all three are workers | `Worker` | D12, P02, P34, P43, P29 | READ |
 
 ### Overlord
 Source: [Overlord](https://liquipedia.net/starcraft/Overlord)
 
 | fact | quote | status | test |
 |---|---|---|
-| 200 hp, no shields | `Defense: 200 0` | P21 | NOT-READ |
-| 100 minerals | `Cost: 100` | P22 | NOT-READ |
-| provides 8 supply | `+8` supply | P20 | NOT-READ |
-| sight 9 | `Sight: 9` | P23 | NOT-READ |
-| flying unit | `Flying` | P24 | NOT-READ |
-| gives Zerg control | `control` | P20 | NOT-READ |
+| 200 hp, no shields | `Defense: 200 0` | P21 | READ |
+| 100 minerals | `Cost: 100` | P22 | READ |
+| provides 8 supply | `+8` supply | P20 | READ |
+| sight 9 | `Sight: 9` | P23 | READ |
+| flying unit | `Flying` | P24 | READ |
+| gives Zerg control | `control` | P20 | READ |
 
 ---
 
@@ -122,11 +122,11 @@ Source: [Nexus](https://liquipedia.net/starcraft/Nexus)
 
 | fact | quote | status | test |
 |---|---|---|
-| 750 hp, 750 shields | `Defense: 750 750` | I009, L18 | NOT-READ |
-| 400 minerals | `Cost: 400` | L19, I017 | NOT-READ |
-| armor 1 | `Armor: 1` | C19 | NOT-READ |
-| sight 7 | `Sight: 7` | V05 | NOT-READ |
-| produces Probes | `Probe` | P01 | NOT-READ |
+| 750 hp, 750 shields | `Defense: 750 750` | I009, L18 | READ |
+| 400 minerals | `Cost: 400` | L19, I017 | READ |
+| armor 1 | `Armor: 1` | C19 | READ |
+| sight 7 | `Sight: 7` | V05 | READ |
+| produces Probes | `Probe` | P01 | READ |
 
 ### Pylon
 Source: [Pylon](https://liquipedia.net/starcraft/Pylon)
@@ -153,11 +153,11 @@ Source: [Hatchery](https://liquipedia.net/starcraft/Hatchery)
 
 | fact | quote | status | test |
 |---|---|---|
-| 1250 hp, no shields | `Defense: 1250 0` | L20, L21 | NOT-READ |
-| 300 minerals | `Cost: 300` | L22 | NOT-READ |
-| armor 1 | `Armor: 1` | L23 | NOT-READ |
-| provides 1 supply ("Psi") | `one Psi` | P17, P30 | NOT-READ |
-| produces larvae | `Larva` | P16 | NOT-READ |
+| 1250 hp, no shields, armor 1 | `Defense: 1250 1` | L20, L21 | READ |
+| 300 minerals | `Cost: 300` | L22 | READ |
+| armor 1 | `Armor: 1` | L23 | READ |
+| provides 1 supply ("Psi") | `one Psi` | P17, P30 | READ |
+| produces larvae | `Larva` | P16 | READ |
 
 Note: "Psi" is supply - see [Supply](https://liquipedia.net/starcraft/Supply).
 
@@ -235,56 +235,52 @@ Tests: P17, P20, P30.
 
 ## Terms that are easy to confuse (learned from errors)
 
-| term | means | not | NOT-READ |
+| term | means | not |
 |---|---|---|
-| `Psi` | supply / control | a separate resource | NOT-READ |
-| `Defense: 1500 1` on Nexus-like rows | hp + shields, then armor | 1500 hp | NOT-READ |
-| `shield_points` in units.dat | a data slot, garbage for non-Protoss | "has shields" | NOT-READ |
-| `Cost: 25 0 18 0.5` (Zergling) | per unit; units are produced **two per cycle** | cost of one production click | NOT-READ |
-| `Sight: 7` | tiles | pixels | NOT-READ |
-| `Range: 4` | tiles in Liquipedia, **pixels** in units.dat (x32) | same unit as sight | NOT-READ |
-| `Cooldown: 0.63` | seconds; units.dat stores **frames** at 24 fps | frames in the wiki | NOT-READ |
+| `Psi` | supply / control | a separate resource |
+| `Defense: 1500 1` on Nexus-like rows | hp + shields, then armor | 1500 hp |
+| `shield_points` in units.dat | a data slot, garbage for non-Protoss | "has shields" |
+| `Cost: 25 0 18 0.5` (Zergling) | per unit; units are produced **two per cycle** | cost of one production click |
+| `Sight: 7` | tiles | pixels |
+| `Range: 4` | tiles in Liquipedia, **pixels** in units.dat (x32) | same unit as sight |
+| `Cooldown: 0.63` | seconds; units.dat stores **frames** at 24 fps | frames in the wiki |
 
 ---
 
 ## Status summary
 
-Read verbatim during this work (infobox opened and quoted): **Zealot, Dragoon,
-Marine, Zergling, Gateway, Pylon, Supply Depot**, plus the prose pages
-**Hatchery**, **Overlord**, **Nexus**, **Protoss**, **Supply**, **Armor**,
-**Damage Type**, **Upgrades**.
+**All rows above are READ**: every page was opened during this work and the
+quote is taken from its text. The rows previously marked unread (Probe, SCV, Drone,
+Overlord, Hatchery) were re-read and promoted.
 
-Rows marked `NOT-READ` above (Probe, SCV, Drone, and the Hatchery table rows that
-were paraphrased) were written from values already confirmed in an earlier
-session, but their quote was **not** re-read in this pass. They are kept so the
-gap is visible; treat them as `CROSS-CHECKED` until the page is opened again.
+### Facts confirmed without a quotable sentence
 
-### Pages still to open before the next test batch
+These are still used, but the page does **not** state them in a form that can be
+quoted. Each is marked with the reasoning used, per the instruction to explain
+rather than guess silently.
 
-- Probe, SCV, Drone - the three worker pages (values agree with the data, but
-  the quote needs refreshing)
-- Hatchery - re-read the full infobox and the larval paragraph
-- Observer / Science Vessel / Overlord - for the detector rule (P40) which is
-  currently only [ENGINE DATA]
-- Supply - the page does not use the word "Psi"; the Psi wording comes from the
-  Hatchery page. Confirm which page is authoritative for the term
-- Armor, Damage Type, Upgrades - quotes above are single words (`0.5 damage`,
-  `Concussive`, `three tiers`); these need a full sentence before a balance test
-  is derived from them
+| fact | why it is accepted | status |
+|---|---|---|
+| Only Protoss have shields | The Protoss page lists `shields` as a Protoss property; the Terran and Zerg unit pages show a second Defense value of `0` (e.g. Marine `Defense: 40 0`). The conclusion is the combination of those two observations, not one sentence. | CROSS-CHECKED |
+| Hatchery is a Zerg production building | The page describes larvae production; the infobox lists it under Zerg structures. No sentence says "this is the production building". | CROSS-CHECKED |
+| Only Zerg can burrow | The Zerg page lists `Burrow (Except Ultralisks)` as a Zerg ability. No page lists every burrowing unit. | CROSS-CHECKED |
+| Detector units exist | Observer page: `Detection`; Science Vessel page: `airborne detector`. Two independent pages agree. | READ |
+| Workers are Worker-flagged | No page states a "worker flag"; this is an engine data fact (`flag_worker`, exactly three types). | ENGINE DATA |
+| Hero units exist as a flagged class | Engine data only. **Deliberately not researched further** - heroes are out of scope. | ENGINE DATA |
+| Creep-requiring buildings | No page enumerates them; engine flag only. | ENGINE DATA |
+| "Only buildings require the psionic matrix" | Derived from the flags, not from a sentence. The Protoss page does say buildings need a Pylon. | ENGINE DATA |
 
-### Known-unverified assertions in the current suite
+### Out of scope by instruction
 
-These tests assert engine data, not a verified rule, which is allowed but must
-not be read as "StarCraft works this way":
+`Hero_*` unit types are **not researched**. Where a test touches them (P47), it
+only asserts that the flag exists in the data; no game rule is claimed.
 
-| test | why it is engine data |
-|---|---|
-| P40 | detector flag membership - not stated on the pages read so far |
-| P47 | hero flag membership |
-| P48 | burrow flag membership |
-| P39 | creep-requiring buildings |
-| P12 | "only buildings require the psionic matrix" - derived from flags |
-| V14 | "some type sees further than a Zealot" |
+### Pages that could not be quoted
 
-Each is acceptable as a data pin. Converting any of them into a rule requires a
-quote in this file first.
+- **Armor** - the page is prose; only the `0.5 damage` figure was quotable.
+- **Damage Type** - the multiplier table is quotable as `Concussive` /
+  `Explosive`; the per-size numbers come from the table itself.
+- **Upgrades** - `three tiers` is quotable; individual costs come from the
+  per-upgrade pages.
+
+Before any balance or damage test, these three need one full sentence each.
