@@ -168,9 +168,39 @@ wrong. The match test only proves wiring.
 
 ---
 
+## 9a. Implementation log
+
+- `bots/zombie_bot.h`: policy + actuator written. Policy is pure; 14 unit tests
+  in `tests/zombie_bot_test.cpp` pass without a map.
+- Two bugs found by the tests, both fixed in the design rather than papered over:
+  - `unit_hp_total` summed **raw** fp8 values (12 hp == 3072 raw). Ordering was
+    still correct but the numbers were meaningless; now `integer_part()`.
+  - The ranged fallback used the wounded-first ordering; the design says
+    "nearest". Z04 caught it.
+- Third failure was **in the test**: Z04 had its distances swapped (100 was
+  nearer than 400) and asserted the opposite of its own comment.
+- Engine order ids confirmed by name, not memory: `AttackUnit` 10, `AttackMove`
+  14, `Move` 6, `Guard` 2, `Stop` 1.
+
 ## 10. Definition of done
 
 1. `_AI/BOT-DESIGN.md` implemented as `zombie_bot.h` (one header, no .cpp).
 2. Policy unit tests pass with no map loaded.
 3. On a unit-only map with both sides armed: kills occur within 300 frames.
 4. `_run-tests.sh` green, bot disabled by default.
+
+## 9b. Integration test findings (measured)
+
+| map | result |
+|---|---|
+| `GenericTwoBases.scm` | **6/6** - bot acts, units die, and the outcome **differs** from an un-driven control run |
+| `1Drag_v_1Zeal.scm` | 5/6 - M06 correctly fails: the map's own `Elapsed time -> Defeat` trigger kills slot 3 at frame 312 whatever the bot does |
+
+Two traps caught by this test:
+
+1. **No control run = false credit.** M05 first only checked "units died". A map
+   with `Elapsed time -> Defeat` loses units by itself (measured: slot 1,
+   154 -> 0 in 400 frames with no bot). M06 was added: run the same map with no
+   bot and require the outcome to differ.
+2. **Count armed units, not units.** `1Drag` slot 1 owns 139
+   `Special_Map_Revealer` helpers with no weapon; a raw count called that a fight.
