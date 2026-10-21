@@ -13696,6 +13696,34 @@ struct state_functions {
 		if (image) set_image_heading_by_index(image, index);
 	}
 
+	// Size multiplier for explosive/concussive damage, extracted for tests
+	// (BUG-9 was filed against this switch on a misread table - the code
+	// already implemented the Liquipedia table, so this pins it instead
+	// of changing it). Small/medium/large per classic.battle.net
+	// (units are only those three sizes); size 0 is specials with no
+	// combat size (revealers, resources) and takes no explosive/
+	// concussive damage - engine behavior, no source found for a
+	// different rule, so it stays exactly as it was.
+	// The parameter is named `dt`, not `damage_type`: naming it after the enum
+	// (`weapon_type_t::damage_type`) shadows the type name and makes every
+	// comparison below parse as a member access - it does not compile.
+	static fp8 damage_size_multiplier(int dt, int unit_size) {
+		if (dt == weapon_type_t::damage_type_explosive) {
+			if (unit_size == 0) return 0_fp8;
+			if (unit_size == 1) return 128_fp8;
+			if (unit_size == 2) return 192_fp8;
+			return 256_fp8;
+		}
+		if (dt == weapon_type_t::damage_type_concussive) {
+			if (unit_size == 0) return 0_fp8;
+			if (unit_size == 2) return 128_fp8;
+			if (unit_size == 3) return 64_fp8;
+			return 256_fp8;
+		}
+		return 256_fp8;
+	}
+
+
 	void weapon_deal_damage(const weapon_type_t* weapon, fp8 damage, int damage_divisor, unit_t* target, direction_t heading, unit_t* source_unit, int source_owner) {
 		if (target->hp == 0_fp8) return;
 		if (u_invincible(target)) return;
@@ -13732,14 +13760,8 @@ struct state_functions {
 			damage = 0_fp8;
 			break;
 		case weapon_type_t::damage_type_explosive:
-			if (target->unit_type->unit_size == 0) damage = 0_fp8;
-			else if (target->unit_type->unit_size == 1) damage *= 128_fp8;
-			else if (target->unit_type->unit_size == 2) damage *= 192_fp8;
-			break;
 		case weapon_type_t::damage_type_concussive:
-			if (target->unit_type->unit_size == 0) damage = 0_fp8;
-			else if (target->unit_type->unit_size == 2) damage *= 128_fp8;
-			else if (target->unit_type->unit_size == 3) damage *= 64_fp8;
+			damage *= damage_size_multiplier(weapon->damage_type, target->unit_type->unit_size);
 			break;
 		case weapon_type_t::damage_type_normal:
 			break;

@@ -224,6 +224,34 @@ int main(int argc, char** argv) {
 		test("C27", "Nexus is not a small unit",
 			f.size_name(f.u(UnitTypes::Protoss_Nexus).unit_size) != std::string("small"),
 			f.size_name(f.u(UnitTypes::Protoss_Nexus).unit_size));
+
+	// ===================== Damage-vs-size multipliers (C41-C42) =====================
+	// [VERIFIED https://liquipedia.net/starcraft/Damage + https://classic.battle.net/scc/gs/damage.shtml:
+	//  concussive 100/50/25 and explosive 50/75/100 vs small/medium/large.
+	//  OpenBW data layout is 1/2/3 (see C22-C25). BUG-9 was filed against
+	//  this switch on a misread table - the code already implemented it,
+	//  so these pin it instead of changing it. Size 0 (specials with no
+	//  combat size: revealers, resources) takes no explosive/concussive
+	//  damage - engine behavior, no source found for a different rule.]
+	{
+		using W = bwgame::weapon_type_t;
+		auto mult = [&](int damage_type, int size) {
+			return f.lf.damage_size_multiplier(damage_type, size).raw_value;
+		};
+		bool concussive_ok = mult(W::damage_type_concussive, 1) == 256
+			&& mult(W::damage_type_concussive, 2) == 128
+			&& mult(W::damage_type_concussive, 3) == 64;
+		test("C41", "concussive deals 100/50/25% vs S/M/L", concussive_ok,
+			fmt("1->%d 2->%d 3->%d (raw of fp8 256)", mult(W::damage_type_concussive, 1),
+				mult(W::damage_type_concussive, 2), mult(W::damage_type_concussive, 3)));
+		bool explosive_ok = mult(W::damage_type_explosive, 1) == 128
+			&& mult(W::damage_type_explosive, 2) == 192
+			&& mult(W::damage_type_explosive, 3) == 256;
+		test("C42", "explosive deals 50/75/100% vs S/M/L", explosive_ok,
+			fmt("1->%d 2->%d 3->%d (raw of fp8 256)", mult(W::damage_type_explosive, 1),
+				mult(W::damage_type_explosive, 2), mult(W::damage_type_explosive, 3)));
+	}
+
 	}
 
 	// ===================== Supply (C28-C35) ================================

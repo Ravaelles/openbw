@@ -237,62 +237,29 @@ has_shield everywhere - verified branch by branch before touching).
 
 ---
 
-## BUG-9 - Concussive damage reads wrong unit sizes (kills the wrong targets)
+## BUG-9 - WITHDRAWN: the concussive/explosive branches were already correct
 
-**Observed:** reading `damage_by_weapon_type()` while writing C22-C26:
+> **WITHDRAWN as a defect 2026-10-21, kept as a pinned fact.** The entry
+> as written contradicted its own evidence: it claimed small units are
+> immune to concussive damage while quoting code that gives them 100%,
+> and its suggested fix (0 -> full, 1 -> 50%, 2 -> 25%) would have set
+> concussive-vs-small to 50% against every cited source. Verified
+> instead, three ways: (1) the code reads `unit_size` 1/2/3 as
+> concussive 100/50/25 and explosive 50/75/100 - exactly the Liquipedia
+> Damage_Type table, the Damage_Order_of_Operations page, Wikibooks,
+> starcraftai.com and classic.battle.net/gs/damage.shtml, which all
+> agree; (2) the mapping 1 = small / 2 = medium / 3 = large is pinned
+> by C22-C25 against per-unit Liquipedia pages (Marine/Zealot/Zergling
+> small, Dragoon large); (3) C41/C42 now pin the multiplier table
+> itself (concussive 256/128/64, explosive 128/192/256 of fp8 256),
+> so a future "fix" cannot silently invert it.
 
-```cpp
-case damage_type_concussive:
-  if (target->unit_type->unit_size == 0) damage = 0_fp8;        // -> ZERO
-  else if (target->unit_type->unit_size == 2) damage *= 128_fp8; // 50%
-  else if (target->unit_type->unit_size == 3) damage *= 64_fp8;  // 25%
-  break;
-```
-
-**Measured data:** `unit_size` in this units.dat is **1 = small, 2 = medium,
-3 = large** (and 0 for special/no-size types). Measured directly:
-Marine = 1, Zergling = 1, Zealot = 1, Dragoon = 3, Nexus = 3.
-
-The two branches do **not** agree with each other:
-
-| branch | 0 | 1 | 2 | 3 |
-|---|---|---|---|---|
-| explosive | 0 | 50% | 75% | **no multiplier (100%)** |
-| concussive | 0 | **no multiplier** | 50% | 25% |
-
-So explosive treats 0 as small (wrong for this data: small is 1) and concussive
-treats 1 as the full-damage case, 2 as 50% and 3 as 25%. With the real mapping
-(1 small, 2 medium, 3 large) the correct concussive row is 1 -> 100%,
-2 -> 50%, 3 -> 25%; the code gives 1 -> 100% (accidentally right), 2 -> 50%
-(right), 3 -> 25% (right) - but **0 -> 0 damage**, and explosive is off by one
-because its 0 slot never occurs. The lists disagree, which is the actual
-defect: one of them must be wrong.
-
-**The rule** ([Liquipedia: Damage Type](https://liquipedia.net/starcraft/Damage_Type)):
-
-| damage type | small | medium | large |
-|---|---|---|---|
-| concussive | 100% | 50% | 25% |
-| explosive | 50% | 75% | 100% |
-
-**Consequence:** against a **small** unit (Marine, Zealot, Zergling) concussive
-damage becomes **0**, and against a **large** unit it gets no multiplier at all.
-Since almost every classic concussive attacker (Vulture, Firebat, Ghost,
-Medic-irrelevant, Valkyrie vs air) targets ground units that are small or
-medium, the effect is not "wrong by one step": small units are **immune** to
-concussive fire, which is the opposite of the rule.
-
-The explosive branch is correct (0 -> 50%, 1 -> 75%, 2 -> 100%).
-
-**Suggested fix (not applied):** use the same size mapping as the explosive
-branch: 0 -> full, 1 -> 50%, 2 -> 25%.
-
-**Not covered by a passing test yet:** C22-C26 currently assert sizes, not
-damage outcome, and the tests are left documenting this in comments.
-
----
-
----
+> What remains open (not a bug, no change): size 0 (specials only -
+> revealers, resources, critters; measured census in-repo) takes no
+> explosive/concussive damage. No source found for what independent
+> sizes should take, and no test covers a size-0 combat case, so the
+> branch stays exactly as it was. If a source turns up, it lands with
+> a test first.
 
 ## BUG-10 - WITHDRAWN: false alarm, the Hatchery does provide 1 supply
 
