@@ -109,3 +109,87 @@ client still behaves identically. Largest cost, highest regression risk.
   game is in progress, and it can see 107 units when given a slot's units.
 - Every failure mode is documented with file:line in
   `PLAN-STEAMHAMMER.md.status`.
+
+---
+
+## R2 findings (measured)
+
+### The bot IS given a slot and units
+
+```
+steamhammer: slot=0 self=0x6049a5b1ed60 units=11 start=63,46
+```
+
+So on `GenericTwoBases.scm` the module owns 11 units and a start location.
+The earlier "no units" was map-specific, not a slot failure.
+
+### The crash is ours, not Steamhammer's
+
+Full backtrace of the "core dump":
+
+```
+#0 __GI___libc_write (fd=15, ...)          <- SIGPIPE
+#1 BWAPI::Server::callOnFrame()
+#2 BWAPI::Server::update()
+#3 BWAPI::GameImpl::update()
+#4 main
+```
+
+`callOnFrame()` writes the handshake byte to the client socket. When the client
+(the probe) disconnects, the write raises SIGPIPE and kills the process. **This
+is the same server path we fixed for the handshake, and it affects any short-
+lived client, not just Steamhammer.**
+
+### Steamhammer's asserts do NOT stop it
+
+`Steamhammer/Source/UABAssert.h` defines `UAB_BREAK` as **empty** on this build,
+so `UAB_ASSERT(...)` only logs and continues. "our base is unknown" is therefore
+**not** the reason nothing happens - the bot keeps running and silently does
+nothing useful.
+
+### Its logs
+
+- Assertions go to **stderr**, which our launcher redirects into its own log
+  (`File:` / `Message:` lines) - that is where I read them.
+- `bwapi-data/write/Steamhammer_ErrorLog.txt` stays empty; the write directory
+  contains files from a *different* bot (`Locutus`, `om_Tests.txt`, dated Oct 1),
+  i.e. leftovers from another installation, not Steamhammer output.
+
+**Conclusion for the next step:** fix the SIGPIPE first - with a client that
+disconnects we cannot observe the bot long enough to judge it.
+
+### R3 - SIGPIPE fixed (server bug, affects every short-lived client)
+
+`Server::callOnFrame()` used `write(syncSocket, ...)`. When the client goes away,
+the kernel raises **SIGPIPE** and the process dies before `write()` returns, so
+the existing error handling never ran. Replaced with
+
+```cpp
+send(syncSocket, &code, 1, MSG_NOSIGNAL)
+```
+
+and reset `everSynced` on failure.
+
+**Measured after the fix:** server stays alive (`pgrep` = 1) with the module
+attached, `0` assertion lines, module reports `units=11 start=63,46`.
+
+This is not a Steamhammer issue: any client that disconnects mid-frame used to
+kill the host. It also explains why several earlier runs "crashed" at exactly
+the moment a probe finished.
+
+### R3b - what Steamhammer reports, and what it does not
+
+- `UAB_BREAK` is defined **empty** in `Steamhammer/Source/UABAssert.h`, so every
+  `UAB_ASSERT` only logs. "our base is unknown" does not stop the bot; it
+  continues silently doing nothing.
+- Asserts are printed to **stderr**, which our launcher captures - that is the
+  `File:`/`Message:` pair.
+- `bwapi-data/write/Steamhammer_ErrorLog.txt` is never written; the `write/`
+  directory only holds leftovers from another bot (`Locutus`, Oct 1).
+
+So "nothing happens" = the bot runs, hits a soft assert, and idles. To see
+whether it recovers we must give it a real base **and** let it run for a while.
+
+**Next (R4):** run with a client that stays connected (Atlantis, not the probe)
+on `GenericTwoBases.scm`, and watch for the first `Build order` / worker count
+change over ~60 s.
