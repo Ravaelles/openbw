@@ -1,0 +1,17 @@
+# Steamhammer integration - live status
+
+Plan: `_AI/PLAN-STEAMHAMMER.md`. This file is updated after every step.
+Rule: one step at a time, small cycles, measure before assuming.
+
+| step | state | result |
+|---|---|---|
+| S1 inventory sources | TODO | |
+| S2 copy into 3rdparty/Steamhammer | TODO | |
+| S3 first build, record exact error | TODO | |
+| S4 missing symbols / API drift | TODO | |
+| S5 link against our libBWAPI, produce .so | TODO | |
+| S6 load module in launcher (onStart runs) | TODO | |
+| S7 slot + units for the bot | TODO | |
+| S8 full match, kills > 0 | TODO | |
+| S9 run script | TODO | |
+| S10 docs + commit | TODO | |
