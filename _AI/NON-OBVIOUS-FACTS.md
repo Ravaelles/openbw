@@ -160,3 +160,21 @@ overload does not round-trip (BUG-3). Always use the raw overload with
 ---
 
 ---
+
+### N21 - Native StarCraft AI is only partially supported
+
+A map slot marked `controller_computer` means "the game's built-in AI plays
+this player". OpenBW has no such AI. Since BUG-12 the engine no longer aborts:
+it skips the AI orders, counts them in `state::skipped_native_ai_orders` and
+logs once.
+
+Consequences that matter when reading test results:
+
+- the map **loads** fully and the match runs;
+- the AI player is **idle** - no building, no attacks, no defence;
+- trigger chains seeded by AI behaviour never fire;
+- **check the counter** before calling such a map "working": `0` means no native
+  AI was needed, `> 0` means part of the map was not simulated.
+
+Measured on the extreme corpus: 10/10 maps hostable, all relying on the idle
+computer player.

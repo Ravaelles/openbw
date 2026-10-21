@@ -347,10 +347,34 @@ The moment a map relies on a computer opponent - which most `*_v_*` maps in
 this corpus do - the engine cannot host it, even though the map, its units and
 its triggers all loaded correctly.
 
-**Suggested handling (not applied):** treat `controller_computer` like the
-unsupported-trigger path: log once, count it in state, and let the match run
-with the computer player idle, instead of calling `error()`. Measured evidence
-that everything else is fine is the load counts above.
+**Status: MITIGATED (documented partial support), not fixed.**
 
-**Test status:** `map_load_test` keeps M5 red and prints the message, so the gap
-stays visible in every run.
+Native StarCraft AI is **not implemented and this change does not implement it**.
+What changed is the failure mode: instead of aborting the match, every
+native-AI order is skipped, counted in `state::skipped_native_ai_orders` and
+logged once:
+
+```
+bwgame: native StarCraft AI order (ComputerAI) skipped - partial UMS support,
+        the AI player stays idle (further occurrences counted silently)
+```
+
+Routed through one helper, `skip_native_ai_order()`: `ComputerAI` (both the
+visible and hidden path), `AIPatrol`, `ComputerReturn`, `AtkMoveEP`,
+`HarassMove`, `GuardPost`. Unsupported AI script ids in trigger action 15 are
+handled the same way.
+
+The long comment on `state::skipped_native_ai_orders` in `bwgame.h` states the
+contract explicitly:
+
+- the map loads completely (units, triggers, regions);
+- the AI player is **idle for the whole match** - it does not build, attack or
+  defend; its units stay where the map placed them;
+- anything depending on the native AI acting will **not** happen;
+- a non-zero counter means the native-AI portion was **not** simulated.
+
+**Measured effect:** the ten extreme maps of the UMS corpus went from 1/10 to
+**10/10** hostable, with all suites still green.
+
+**Test status:** `map_load_test` now passes (M5). The counter is the signal, not
+a red test - a map that "runs" here may still be missing its AI opponent.

@@ -265,6 +265,34 @@ struct state_base_copyable {
 	int skipped_trigger_conditions = 0;
 	int skipped_trigger_actions = 0;
 	bool unknown_trigger_logged = false;
+
+	// NATIVE AI IS ONLY PARTIALLY SUPPORTED - read before touching this.
+	//
+	// A map can mark a slot as `controller_computer`, meaning "let StarCraft's
+	// built-in AI play this player". OpenBW has no implementation of that AI.
+	// The orders it would issue (`Orders::ComputerAI` and friends such as
+	// `AIPatrol`, `AIPlayerGuard`) therefore have no handler.
+	//
+	// This is a deliberate, documented limitation, NOT a bug to work around
+	// casually:
+	//   * such a map LOADS completely (units, triggers, regions) - measured on
+	//     the UMS corpus: 169/148/26/24/13/10 units, 75/4 triggers;
+	//   * the computer player is then IDLE for the whole match. It does not
+	//     build, attack, or defend. Units stay where the map placed them.
+	//   * anything that depends on the native AI acting (attacks, expansion,
+	//     trigger chains seeded by AI behaviour) will NOT happen.
+	//
+	// Before this counter existed, the first AI order aborted the entire
+	// simulation with error("ComputerAI"), so such maps could not be hosted at
+	// all (BUG-12). Now the order is skipped, counted here and logged once, and
+	// the match continues - which makes the map usable for everything except
+	// the AI player itself.
+	//
+	// Do NOT read a passing match on such a map as "AI works". Check this
+	// counter: a non-zero value means the native-AI portion of that map was
+	// NOT simulated.
+	int skipped_native_ai_orders = 0;
+	bool native_ai_logged = false;
 	std::array<int, 12> trigger_wait_timers;
 	std::array<bool, 12> trigger_waiting;
 
@@ -7649,6 +7677,24 @@ struct state_functions {
 		}
 	}
 
+	// One place for every native-AI order the engine cannot execute.
+	//
+	// Drops the order, counts it in state::skipped_native_ai_orders and logs the
+	// first occurrence. Units stay idle instead of the match aborting - see the
+	// long comment on that field for what this does and does not guarantee.
+	void skip_native_ai_order(unit_t* u, const char* what) {
+		++st.skipped_native_ai_orders;
+		if (!st.native_ai_logged) {
+			st.native_ai_logged = true;
+			std::fprintf(stderr,
+				"bwgame: native StarCraft AI order (%s) skipped - partial UMS support, "
+				"the AI player stays idle (further occurrences counted silently)\n", what);
+		}
+		// Clear the order so the idle unit does not retry it every frame.
+		u->order_type = get_order_type(Orders::Nothing);
+		u->order_process_timer = 0;
+	}
+
 	void execute_main_order(unit_t* u) {
 		switch (u->order_type->id) {
 		case Orders::Die:
@@ -8106,19 +8152,25 @@ struct state_functions {
 			error("CTFCOP2");
 			break;
 		case Orders::ComputerAI:
-			error("ComputerAI");
+			// Native StarCraft AI is not implemented: documented partial-UMS
+			// limitation, not an error. See state::skipped_native_ai_orders.
+			skip_native_ai_order(u, "ComputerAI");
 			break;
 		case Orders::AtkMoveEP:
-			error("AtkMoveEP");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "AtkMoveEP");
 			break;
 		case Orders::HarassMove:
-			error("HarassMove");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "HarassMove");
 			break;
 		case Orders::AIPatrol:
-			error("AIPatrol");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "AIPatrol");
 			break;
 		case Orders::GuardPost:
-			error("GuardPost");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "GuardPost");
 			break;
 		case Orders::RescuePassive:
 			error("RescuePassive");
@@ -8127,7 +8179,8 @@ struct state_functions {
 			order_Neutral(u);
 			break;
 		case Orders::ComputerReturn:
-			error("ComputerReturn");
+			// Native-AI order: same documented partial-UMS limitation.
+			skip_native_ai_order(u, "ComputerReturn");
 			break;
 		case Orders::InitializePsiProvider:
 			order_InitializePsiProvider(u);
@@ -12656,7 +12709,8 @@ struct state_functions {
 			error("hidden EnterTransport");
 			break;
 		case Orders::ComputerAI:
-			error("hidden ComputerAI");
+			// Same documented limitation as the visible path (BUG-12).
+			skip_native_ai_order(u, "hidden ComputerAI");
 			break;
 		case Orders::RescuePassive:
 			error("hidden RescuePassive");
@@ -19200,7 +19254,20 @@ struct state_functions {
 				st.shared_vision[7] |= 1 << owner;
 				break;
 			default:
-				error("unknown ai script");
+				// Only the shared-vision AI scripts above are recognised. Any other
+				// script id belongs to the native StarCraft AI, which is not
+				// implemented: partial UMS support, documented on
+				// state::skipped_native_ai_orders. Count it and log once instead of
+				// aborting the match - an unsupported script used to make an
+				// otherwise loadable map unplayable (measured: ProtossBaseA_v_Zerg).
+				++st.skipped_native_ai_orders;
+				if (!st.native_ai_logged) {
+					st.native_ai_logged = true;
+					std::fprintf(stderr,
+						"bwgame: unsupported AI script (0x%x) skipped - partial UMS support, "
+						"native AI is not simulated (further occurrences counted silently)\n",
+						(unsigned)a.group2_n);
+				}
 			}
 			return true;
 		case 22: // kill unit
