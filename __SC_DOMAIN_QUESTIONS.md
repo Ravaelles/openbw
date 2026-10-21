@@ -239,7 +239,7 @@ names the unit it uses.
 |---|---|---|
 | Nexus produces Probes | yes | [Nexus](https://liquipedia.net/starcraft/Nexus) |
 | Gateway needs Pylon power | yes | [Gateway](https://liquipedia.net/starcraft/Gateway) |
-| Hatchery provides no supply | 0 | [Hatchery](https://liquipedia.net/starcraft/Hatchery) - **CONFLICT**, see BUG-10 |
+| Hatchery provides 1 supply ("one Psi") | 1 | [Hatchery](https://liquipedia.net/starcraft/Hatchery), [Supply](https://liquipedia.net/starcraft/Supply) |
 | Overlord supplies 8, 200 hp, 100 min, sight 9 | yes | [Overlord](https://liquipedia.net/starcraft/Overlord) |
 | Zergling: two per egg | yes | [Zergling](https://liquipedia.net/starcraft/Zergling) - engine flag `flag_two_units_in_one_egg` |
 | Protoss buildings need the psionic matrix | yes | [Protoss](https://liquipedia.net/starcraft/Protoss) |
@@ -252,7 +252,9 @@ Three surprises from the data, now pinned by tests instead of guessed at:
 2. **Placeholder types exist**: `Unused_Terran1` (119) is flagged as a building
    but has 0 hp. "Every building has hp" is false; at most six such placeholders
    exist.
-3. **Hatchery supply** is 1 in the data (BUG-10), 0 in the game.
+3. **Psi == supply**: the Hatchery page says "one Psi", which is 1 supply. An
+   earlier version of this file wrongly called the data value a conflict; see
+   `_AI/BUGS.md` BUG-10 (withdrawn).
 
 ---
 

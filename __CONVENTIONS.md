@@ -22,6 +22,27 @@ Consequences:
 - If Liquipedia does not document something (editor groups, chunk layout,
   engine constants), the test asserts **engine data** and says so.
 
+### How to read a source (learned the hard way)
+
+1. **Read the page, do not query it with a closed question.** Asking "does X
+   provide supply?" and getting an answer that covers larvae tells you nothing
+   about supply. Fetch the page and look for the fact, or ask an open question
+   ("what does the page say about supply, Psi, control?").
+2. **Absence of a fact is not a negative fact.** If the page does not mention it,
+   the status is UNVERIFIED - never "no".
+3. **Never write `[VERIFIED]` for something you did not see in the page text.**
+   Quote the sentence or the number in the comment.
+4. **Terminology is a trap.** StarCraft uses several names for the same thing
+   (Psi = supply/control; "hit points" can mean hp+shields for Protoss). When a
+   page uses a word you are not sure about, look that word up before concluding.
+5. **Do not file a bug against data before the source is unambiguous.** A
+   "conflict" between data and documentation is usually a misreading; check the
+   exact wording first.
+
+Concrete case (BUG-10): the Hatchery page says "Hatcheries by themselves provide
+one Psi". I queried only about supply, got a larvae answer, treated silence as
+"no supply", and filed a bug against `units.dat`. The data was right all along.
+
 ### Traps already hit (do not repeat)
 
 | trap | reality |

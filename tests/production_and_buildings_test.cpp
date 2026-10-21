@@ -3,7 +3,7 @@
 // Domain sources (each assertion cites its own):
 //   https://liquipedia.net/starcraft/Nexus      produces Probes; Protoss tech root
 //   https://liquipedia.net/starcraft/Gateway    produces Zealot/Dragoon/HT/DT; needs Pylon power
-//   https://liquipedia.net/starcraft/Hatchery   spawns larvae; does NOT give supply
+//   https://liquipedia.net/starcraft/Hatchery   spawns larvae; provides 1 Psi (= 1 supply)
 //   https://liquipedia.net/starcraft/Overlord   supplies 8 control; 200 hp; 100 min; sight 9
 //   https://liquipedia.net/starcraft/Zergling   two per egg  (engine: flag_two_units_in_one_egg)
 //   https://liquipedia.net/starcraft/Protoss    Pylon powers buildings via psionic matrix
@@ -132,15 +132,18 @@ int main(int argc, char** argv) {
 	}
 
 	// ================== Zerg production (P16-P30) =========================
-	// [VERIFIED https://liquipedia.net/starcraft/Hatchery] the Hatchery is the
-	// Zerg production centre and spawns larvae; it does NOT provide supply.
+	// [VERIFIED https://liquipedia.net/starcraft/Hatchery] the Hatchery is the Zerg
+	// production centre and spawns larvae. The page also states: "Hatcheries by
+	// themselves provide one Psi to the Zerg player", and Psi is another name for
+	// supply. So it provides exactly 1 supply.
 	test("P16", "Hatchery is a building", f.has(UnitTypes::Zerg_Hatchery, unit_type_t::flag_building));
-	// [CONFLICT] Liquipedia says the Hatchery gives no supply (Overlords do), but
-	// units.dat gives it 1. Assert the GAME value so the gap stays visible; see
-	// __SC_DOMAIN_QUESTIONS.md C6 and _AI/BUGS.md BUG-10.
-	test("P17", "Hatchery provides no supply (Liquipedia; data says 1)",
-		f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value == 0,
-		fmt("data raw=%d (=%.1f)", (int)f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value,
+	// [VERIFIED https://liquipedia.net/starcraft/Hatchery + /Supply] "one Psi" is
+	// one supply. An earlier version asserted 0 and raised a false BUG-10 because
+	// I never read the page for the supply sentence - a lesson recorded in
+	// __CONVENTIONS.md section 1.
+	test("P17", "Hatchery provides 1 supply (one Psi)",
+		f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value == 2,
+		fmt("data raw=%d (=%.1f supply)", (int)f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value,
 			(double)f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value / 2));
 	test("P18", "Hatchery does not require creep (it spreads it)",
 		!f.has(UnitTypes::Zerg_Hatchery, unit_type_t::flag_requires_creep));
@@ -168,14 +171,16 @@ int main(int argc, char** argv) {
 	test("P28", "Zergling is not a worker", !f.has(UnitTypes::Zerg_Zergling, unit_type_t::flag_worker));
 	test("P29", "Drone is a worker and not a building",
 		f.has(UnitTypes::Zerg_Drone, unit_type_t::flag_worker) && !f.has(UnitTypes::Zerg_Drone, unit_type_t::flag_building));
-	{	// [VERIFIED Liquipedia/Hatchery] the Hatchery's own supply is provided by
-		// Overlords, so among Zerg types only the Overlord provides supply.
-		int zerg_providers = 0;
-		for (int i = 37; i <= 64; ++i) {   // Zerg unit id range in this data
-			if (st.game->unit_types.vec[(size_t)i].supply_provided.raw_value > 0) ++zerg_providers;
-		}
-		test("P30", "Zerg supply comes from few types", zerg_providers >= 1 && zerg_providers <= 3,
-			fmt("%d providers in id 37..64", zerg_providers));
+	{	// [VERIFIED https://liquipedia.net/starcraft/Hatchery + /Overlord] Zerg supply
+		// comes from the Hatchery (1 each) and the Overlord (8 each). Measured in
+		// the Zerg id range the supply providers are Hatchery (building), Overlord
+		// (8) and Hero_Yggdrasill (30, a campaign hero). The rule-level assertion is
+		// therefore about the two regular ones, not "exactly one non-building".
+		int hatchery = (int)f.u(UnitTypes::Zerg_Hatchery).supply_provided.raw_value;
+		int overlord = (int)f.u(UnitTypes::Zerg_Overlord).supply_provided.raw_value;
+		test("P30", "Zerg supply totals Hatchery(1) + Overlord(8) per type",
+			hatchery == 2 && overlord == 16,
+			fmt("hatchery raw=%d, overlord raw=%d", hatchery, overlord));
 	}
 
 	// ================== Terran production (P31-P38) =======================
