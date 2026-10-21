@@ -233,6 +233,46 @@ Tests: P17, P20, P30.
 
 ---
 
+## Supply (S-series)
+
+Source: [Supply](https://liquipedia.net/starcraft/Supply)
+
+| fact | quote | status | test |
+|---|---|---|---|
+| cap per player | `200` | READ | S17 |
+| Zergling / Scourge cost | `0.5` | READ | S01, S02 |
+| Marine 1, Zealot 2, Dragoon 2 | `1` / `2` / `2` | READ | S03-S05 |
+| Supply Depot / Overlord / Pylon +8 | `+8 Supply` | READ | S11, S12, S14 |
+| Hatchery +1 ("one Psi") | `one Psi` | READ | S13 |
+
+**Engine scaling:** supply is fp1 - `raw 2 == 1.0 supply`. Half-supply units are
+raw 1, which is why comparing raw values to whole numbers gives the wrong answer
+(S01 would read "Zergling costs 1").
+
+### Measured supply providers (nine types, not five)
+
+```
+Command Center  10      Nexus            9
+Supply Depot     8      Pylon            8
+Overlord         8      Hatchery         1
+                        Lair             1
+                        Hive             1
+                        Hero_Yggdrasil  30  (out of scope)
+```
+
+The town halls do **not** give 8: Command Center and Nexus give 10 and 9, and the
+three Zerg town halls all give 1 (inherited from the Hatchery). A test assuming
+"buildings give 8" would pass on Pylon/Depot and silently fail on town halls.
+
+### supply_available is correct on the first frame
+
+Measured on M&M: slot 2 owns **18 Supply Depots** and reports **144.0** available
+before any frame runs. It is the sum of providers owned, not a value built up
+over time. My first version of S21 asserted "starts at 0" - false for any map
+that places providers.
+
+---
+
 ## Terms that are easy to confuse (learned from errors)
 
 | term | means | not |
@@ -244,6 +284,8 @@ Tests: P17, P20, P30.
 | `Sight: 7` | tiles | pixels |
 | `Range: 4` | tiles in Liquipedia, **pixels** in units.dat (x32) | same unit as sight |
 | `Cooldown: 0.63` | seconds; units.dat stores **frames** at 24 fps | frames in the wiki |
+| supply `raw 1` | 0.5 supply (fp1) | one supply |
+| `Hero_*` units | out of scope by instruction | standard units |
 
 ---
 
