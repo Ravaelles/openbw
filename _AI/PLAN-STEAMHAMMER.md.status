@@ -16,3 +16,242 @@ Rule: one step at a time, small cycles, measure before assuming.
 | S8 full match, kills > 0 | TODO | |
 | S9 run script | TODO | |
 | S10 docs + commit | TODO | |
+
+---
+
+## N1 - log (read only)
+
+**Before starting:** goal = understand `while (!game_started) sync(noop_server)`
+and every reader of `game_started` and `local_player_id`. Success = I can say
+which of the two candidate mechanisms (N2-A / N2-B) is safe, with file:line
+evidence. No code changes in N1.
+
+**N1 result (read only, file:line):**
+
+- `BWData.cpp:460-471` - `setup_function` runs `while (!sync_st.game_started)`.
+  Inside: `sync(noop_server)`, then **`local_client->player_slot` at :462 with
+  no null check**. With no sync client this dereferences null. This is the same
+  crash the AI module hit, but it happens at *setup* time, before any module.
+- `setup_function()` is called every iteration, so the map is loaded once and
+  the loop spins until a client starts the game.
+- `:644` - a second wait loop (`load_replay` path), same shape.
+- `:691` - the only place that *sets* `local_player_id` from the client slot.
+- `:421`, `:658` - reset to `-1` on map/replay load.
+
+**Conclusion for N2:** `game_started` is NOT dead code - it is the gate that
+waits for a sync client. A filesystem AI module never sets it, so the setup loop
+would spin (and crash at :462) regardless of what the module does later.
+
+Therefore **N2-B (run the module as a sync client) is the honest mechanism**;
+N2-A would require inventing a "started" state with no client, which changes the
+meaning of the gate for every other caller.
+
+**Next:** N2 - confirm that an AI module can be attached through the sync path,
+or that the gate needs a documented exception. Evidence first, no code yet.
+
+**N2 result (read only, file:line):**
+
+- `sync.h:740` - `sync_st.game_started = true` is set only inside `start_game()`,
+  which is reached from the client message path (`send_game_started` is called
+  once, at :746, from that same function).
+- So `game_started` means literally "a sync client asked to start". An in-process
+  AI module has no client and never sends that message.
+- `sync.h:748-750` - immediately after the flag it dereferences
+  `sync_st.local_client->name`, i.e. the whole function assumes a client exists.
+
+**Decision (N2):** neither A nor B as first written.
+
+- B ("module as sync client") is wrong: a module is loaded by the *game*, it
+  does not connect over the socket, and faking a client would make the engine
+  believe a human is present - affecting slot randomisation, player names,
+  replay saving and every `local_client` use after :748.
+- A ("invent a started state") is also wrong for the same reason: the flag is a
+  client-lifecycle marker, not a "map is ready" marker.
+
+**Revised N2 = N2-C: the module must be started by a client.** The engine
+already supports exactly this: our normal client (`run-openbw-ums.sh` /
+Atlantis) calls start, `game_started` becomes true, and the loop exits. The
+question then is only *which slot the module controls* - not how to start the
+game.
+
+**Consequence for the whole approach:** Steamhammer should be attached as the
+AI module *while a normal client hosts the game*. That is the same shape as
+`TestAIModule`, which already works. N3 is therefore not an engine change but a
+run configuration: client + module on different slots.
+
+**Next:** N3-pre - verify that a module can be given a slot when the game is
+already started by a client. Measure, do not change code.
+
+**N3-pre result - CORRECTION to N1:**
+
+My N1 note said the setup loop "would crash at :462". Measured: it does **not**
+crash, it **waits**. With the module attached and no client:
+
+```
+BWAPILauncher with BWAPI_CONFIG_AI__AI=libSteamhammer.so
+  -> produces an EMPTY log (0 bytes) and never opens the socket
+  -> gdb shows it blocked, not faulting (gdb had to be killed after 120 s)
+```
+
+So: `while (!game_started)` is a **wait**, and :462 is only reached when a client
+exists. The earlier null-`local_client` story belongs to a different path
+(`load_replay`), not to this one. [CORRECTED]
+
+**What this means:** the blocker is not a crash but the **absence of a start
+event**. The module cannot start the game, and nothing in the engine makes a
+module-only game startable. That is exactly the C1/C2 challenge, now measured
+rather than inferred.
+
+**Reconsider the direction (step back):** is "module with no client" even a
+model the engine supports? Evidence says no: every path that reaches
+`game_started = true` goes through a sync client. So the viable model is
+"client starts the game, module plays a slot", i.e. N2-C.
+
+**Next:** N3a - start the game with the normal client *and* the module
+attached; observe what happens (does the module load? does it get a slot?). This
+is still measurement: no code changes.
+
+**N3a/N3c/N3d result - measured, with a full backtrace:**
+
+Model "client starts the game, module attached" **works up to onStart**:
+
+```
+server starts, opens the socket            OK
+client connects (probe)                    OK
+onStart fires ~374 ms after connect        OK
+crash inside Steamhammer                   ParseUtils::ParseConfigFile
+```
+
+Backtrace (complete, top 6 frames):
+
+```
+#0  UAlbertaBot::ParseUtils::ParseConfigFile(string const&)
+#1  UAlbertaBot::UAlbertaBotModule::onStart()
+#2  (anonymous namespace)::SlotAssigningModule::onStart()      <- my wrapper
+#3  BWAPI::GameImpl::SendClientEvent(AIModule*, Event&)
+#4  BWAPI::GameImpl::processEvents()
+#5  BWAPI::Server::update()
+```
+
+So the wrapper, the module loading, event dispatch and `onStart()` all work.
+The failure is the **first line of Steamhammer's onStart**, which needs
+`Broodwar->self()`.
+
+**Why self() is still null here:** the client that connected is the *probe*
+(a raw socket peer, not a BWAPI client). The engine's `local_client` belongs to
+the sync-protocol client, so a probe connection starts the game but does not
+assign a player. The module therefore still has no slot.
+
+**Reconsider direction:** the probe is not a player, so it cannot be the
+"client that gives the module a slot". The real client must be one that takes a
+slot - i.e. Atlantis (or a second module). This changes the test vehicle, not
+the approach: N2-C still holds.
+
+**Next:** N3e - repeat with the real Atlantis client instead of the probe, so a
+slot exists when the module's onStart runs. Measure only; no code changes.
+
+**N3g result - MAJOR: the module gets a slot and runs its own logic.**
+
+With a real game start and a connected client, the full chain now works:
+
+```
+Loaded the AI Module: /tmp/shbuild/libSteamhammer.so
+bwapi: BWAPI 4.2.0.0 RELEASE is now live using "libSteamhammer.so".
+File: Steamhammer/Source/Bases.cpp
+Message: our base is unknown
+```
+
+Read: `ParseConfigFile` **passed** (the old crash is gone - `self()` is no
+longer null), Steamhammer's own initialisation ran, and it stopped on its own
+assert `UAB_ASSERT(startingBase, "our base is unknown")` (Bases.cpp:36).
+
+`startingBase` is null because the map gives the bot's slot **no base**: we ran
+`LostTemple.scm` through auto-menu, which put the module on a slot with no
+starting units.
+
+**So the engine-side blocker is CLOSED.** What remains is the same map/slot
+question we already studied: the bot needs a slot that owns a starting base.
+
+**Next:** N4 - choose a map where the module's slot owns a base. Measure which
+slot auto-menu gives the module, then pick a map that places a Nexus/Command
+Center/ Hatchery on it.
+
+**Direction check (step back):** is this still the right road? Yes - every
+remaining problem is now about *which player the bot controls*, not about the
+engine failing to run a third-party module. That is a much smaller problem.
+
+## N4 - log
+
+**Goal:** find which slot the module controls, and a map where that slot owns a
+base. Success = Steamhammer logs a real build/production decision instead of
+"our base is unknown". Measurement only.
+
+**N4 result - root cause of "our base is unknown" found:**
+
+Diagnostic added to the wrapper prints the slot the module actually controls:
+
+```
+steamhammer: slot=0 self=0x... units=0 start=63,7
+Message:   our base is unknown
+```
+
+The module DOES have a slot (0) - it just owns **zero units**.
+`STEAMHAMMER_SLOT=1` had no effect. Measured cause (`GameImpl.cpp:960-965`):
+
+```cpp
+void GameImpl::switchToPlayer(Player p) {
+  if (!isInGame()) { bwgame.switchToSlot(p->getIndex()); }
+}
+```
+
+`switchToPlayer` is a **no-op while a game is in progress**, and `onStart()` runs
+inside a game. So the switch cannot happen there. It must happen **before** the
+match starts - and earlier, when I tried it in `gameInit`, it also did nothing
+because `local_player_id` is recomputed by `sync()` afterwards. Both halves now
+have evidence instead of guesses.
+
+**Direction check:** still the right road. Every remaining obstacle is about
+*selecting the player the module controls*, not about running a third-party
+module.
+
+**Next:** N5 - look for an existing configuration path (auto-menu / host
+settings) to place the module on a slot, before touching engine code. If one
+exists, no engine change is needed.
+
+**N5 result - no configuration path exists (read only):**
+
+```
+BWData.cpp:688-694  sync():
+    ... sync_funcs.sync(server)
+    vars.local_player_id = sync_funcs.sync_st.local_client->player_slot;  // :691
+```
+
+`sync()` **unconditionally overwrites** `local_player_id` with the sync
+client's slot on every call. `sync()` is called every frame and from
+`setup_function`'s loop. So:
+
+- a slot set in `gameInit()` is overwritten at the next `sync()` (why my first
+  attempt failed);
+- a slot set in `onStart()` is rejected because `switchToPlayer` no-ops once
+  `isInGame()` (why my second attempt failed);
+- there is **no configuration knob** for the module's slot in `bwapi.ini`,
+  `BWAPI_CONFIG_*`, or the auto-menu.
+
+**Conclusion:** to place a module on a slot other than the client's, the engine
+needs one explicit, documented rule. Smallest correct shape:
+
+> When an external AI module is attached and a sync client is present, the
+> module's slot is the client slot unless `module_slot` is set; `sync()` must
+> not overwrite a module-assigned slot.
+
+That is a change in `sync()` (one condition) plus a field. It is the first
+engine change in this plan that is justified by measurement rather than
+convenience.
+
+**Before coding:** confirm that two controllers can coexist on one match, i.e.
+that the module playing slot 1 while the client plays slot 0 does not fight over
+`local_player_id`. Measure by setting the field manually and checking `self()`
+in the module.
+
+**Next:** N6 - patch `sync()` to keep a module-assigned slot, rebuild, rerun,
+and read the `steamhammer:` diagnostic. Success = `slot=1 units>0`.
