@@ -308,6 +308,40 @@ Two assumptions of mine were wrong and are now recorded as such:
 
 ---
 
+## Orders (O-series)
+
+Source: [Micro](https://liquipedia.net/starcraft/Micro)
+
+| fact | quote | status | test |
+|---|---|---|---|
+| Move / Attack-Move / Patrol / Hold Position / Stop / Guard exist | `Patrol` | READ | O03-O08 |
+| Attack-move engages enemies on the way | `attack-move` | READ | O12, O38 |
+| Hold Position stays and fires | `hold` | READ | O08, O30 |
+
+### Order ids are sparse and historically fixed
+
+```
+Stop 1   Guard 2   Move 6   AttackMove 14   StayInRange 21   Patrol 152
+table size 189
+```
+
+There is **no `Orders::Hold`**: Hold Position is `StayInRange` (21). Assuming a
+`Hold` member would not compile - the same class of mistake as Stim Pack being a
+tech rather than an upgrade.
+
+### The enum count is not the table size
+
+The enum prints 190 entries in a naive count, the table holds 189. Counting
+lines of an enum is not a measurement; `global->order_types.vec.size()` is.
+
+### Orders live in `global`, not `game`
+
+`st.global->order_types.vec` (global data shared by every match) vs
+`st.game->unit_types.vec` (per-map copy). Reading the wrong one gives a
+null/empty table rather than an error.
+
+---
+
 ## Terms that are easy to confuse (learned from errors)
 
 | term | means | not |
@@ -321,6 +355,8 @@ Two assumptions of mine were wrong and are now recorded as such:
 | `Cooldown: 0.63` | seconds; units.dat stores **frames** at 24 fps | frames in the wiki |
 | supply `raw 1` | 0.5 supply (fp1) | one supply |
 | `Hero_*` units | out of scope by instruction | standard units |
+| `Orders::StayInRange` | Hold Position | a separate "Hold" order |
+| `st.global->order_types` | order table | `st.game->order_types` (does not exist) |
 
 ---
 
