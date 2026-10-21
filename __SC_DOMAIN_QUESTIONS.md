@@ -59,7 +59,7 @@ Tests affected: I003, I004, I097. They now assert on `has_shield`.
 | I006 | Marine hp 40 | 40 | 40 | VERIFIED |
 | I007 | Dragoon hp 100 | 100 | 100 | VERIFIED |
 | I008 | Zergling hp 35 | 35 | 35 | VERIFIED |
-| I009 | Nexus hp | **1500** | **750** | **CONFLICT** |
+| I009 | Nexus 750 hp + 750 shield | 750 + 750 = 1500 total | 750 + 750 | VERIFIED |
 | I015 | Gateway 150 minerals | 150 | 150 | VERIFIED |
 | I016 | Pylon 100 minerals | 100 | 100 | VERIFIED |
 | I017 | Nexus 400 minerals | 400 | 400 | VERIFIED |
@@ -75,46 +75,55 @@ Sources:
 [Marine](https://liquipedia.net/starcraft/Marine),
 [Zergling](https://liquipedia.net/starcraft/Zergling).
 
-### B2. CONFLICT: Nexus hp is 750 in the data, 1500 in the game
+### B2. RESOLVED: "Nexus has 1500 hp" means 750 hp + 750 shields
 
 ```
-Liquipedia Nexus : 1500 hp
-units.dat        : 750 hp
+Liquipedia Nexus : hit points 750, shields 750  -> 1500 damage to destroy
+units.dat        : 750 hp, 750 shield_points
 ```
 
-A clean 2x factor, which does not look like a balance tweak. Candidates: a
-Protoss-specific "shield" column being folded into hp elsewhere, a data-file
-variant, or a different units.dat revision. I009 asserts the **game** value
-(1500) so the gap shows up on every run.
+There was never a conflict. "1500 hit points" is the common shorthand for the
+total damage a Nexus absorbs, which a Protoss building splits between
+non-regenerating-in-combat hp and its shield pool. units.dat is correct on both
+fields.
 
-Until this is explained, **no building-hit-point assertion should be written**
-from memory: Nexus is the first one tested and it already disagrees.
+**Rule for future tests:** when a source quotes "hit points" for a Protoss
+unit, check whether it is quoting hp or hp+shields. For non-Protoss units the
+two figures are the same because they have no shields.
 
 ---
 
-## C. Open question: Zergling cost is 50/0 in the data, 25/0 in the game
+## C. RESOLVED: Zergling costs 50 because it is produced in pairs
 
 ```
-Liquipedia Zergling : minerals 25, gas 0, build time 18 s
-engine units.dat    : minerals 50, gas 0, build time 420 frames (17.5 s)
+Liquipedia Zergling : 25 minerals per Zergling, "spawn in pairs from a single Larva"
+units.dat           : 50 minerals for the producing unit
+build time          : 420 frames (17.5 s), Liquipedia rounds to 18 s
 ```
 
-The build time matches (420 frames at ~24 fps = 17.5 s, Liquipedia rounds to
-18). **The mineral cost does not.**
+One larva produces **two** Zerglings for 50 minerals, so 50 is the cost of one
+production cycle, not of one unit. Data and game agree.
 
-Possible explanations, none confirmed here:
+**Rule for future tests:** for units produced in multiples, `units.dat` holds
+the cost of the **cycle**. Do not "fix" such numbers to the per-unit figure.
 
-1. this `units.dat` is not the one Liquipedia documents (a modified/custom data
-   set, or a partial one),
-2. the field is read from the wrong offset in `data_loading::load_units_dat`,
-3. Liquipedia documents a different game version for that row.
+---
 
-**Status: CONFLICT, unresolved.** D08 was rewritten to assert the **data value**
-(50/0) and to name the conflict in the test, so a future change shows up here
-instead of silently "confirming" one of the two.
+## D0. VERIFIED values that now agree with the data
 
-**This must be resolved before any balance test is written.** If (2) is true,
-every cost in the game is shifted by one field.
+Measured from `units.dat` and cross-checked against Liquipedia. All five rows
+agree, which is the strongest evidence so far that the loader is not shifted:
+
+| unit | hp | shield_points | has_shield | armor | Liquipedia |
+|---|---|---|---|---|---|
+| Nexus | 750 | 750 | 1 | 1 | 750 hp + 750 shield ([Nexus](https://liquipedia.net/starcraft/Nexus)) |
+| Zealot | 100 | 60 | 1 | 1 | 100 + 60, armor 1 ([Zealot](https://liquipedia.net/starcraft/Zealot)) |
+| Marine | 40 | (100, unused) | 0 | 0 | 40 hp, no shield ([Marine](https://liquipedia.net/starcraft/Marine)) |
+| Zergling | 35 | (100, unused) | 0 | 0 | 35 hp, no shield ([Zergling](https://liquipedia.net/starcraft/Zergling)) |
+| Hatchery | 1250 | (100, unused) | 0 | 1 | 1250 hp ([Hatchery](https://liquipedia.net/starcraft/Hatchery)) |
+
+Note on Liquipedia's "Defense: 1250 1": the trailing number is **armor**, not a
+shield. Only Protoss rows carry a real shield value.
 
 ---
 
@@ -131,7 +140,8 @@ prove the game rule. Listed for review:
 | Building build times | D09 | Four special types have no build time. Which four, and is that correct for the game or an artefact of the data file? |
 | Revealer units | UMS-2, I028-I031 | Are revealers truly editor-only helpers with no gameplay effect? (Engine treats them as vision sources.) |
 | MRGN region 63 = whole map | I042 | Is a 0,0-4096,4096 region a legitimate map region, or a parsing artefact? |
-| Trigger tick rate | I063, I064 | Triggers are evaluated every 30 frames (engine constant). Confirm this matches StarCraft's "trigger evaluation period". |
+| Trigger tick rate | I063, I064 | Triggers are evaluated every 30 frames (engine constant). Confirm this matches StarCraft's "trigger evaluation period". **Not verified.** |
+| Shield regeneration | none yet | Protoss shields regenerate (~7 hp/s after a delay). No test covers it; when one is added it needs a source. |
 | Supply per race | D31 | `supply_used` being per-race is an engine layout fact; confirm nothing else reads it as a single value. |
 
 ---

@@ -122,17 +122,15 @@ int main(int argc, char** argv) {
 			fmt("%d/%d", marine.mineral_cost, marine.gas_cost));
 	}
 	{
-		// [ENGINE DATA + CONFLICT] Liquipedia says Zergling costs 25/0
-		// (https://liquipedia.net/starcraft/Zergling); the units.dat loaded here
-		// says 50/0. This asserts the DATA, not the game rule, and the conflict
-		// is recorded in __SC_DOMAIN_QUESTIONS.md (section C). It is deliberately
-		// NOT "corrected" to 25: if the loader reads a shifted field, every cost
-		// in the game is wrong, and this test is where that would surface.
+		// [VERIFIED Liquipedia/Zergling] Zerglings spawn in PAIRS from one larva:
+		// 25 minerals per Zergling, 50 per egg pair. units.dat therefore holds 50
+		// for the producing unit, and that is correct - it is the cost of one
+		// production cycle (two Zerglings), not of a single one. Earlier this
+		// looked like a data conflict against Liquipedia's "25"; it was not.
 		const auto& zergling = types[(size_t)UnitTypes::Zerg_Zergling];
-		test("D08", "Zergling cost as loaded from units.dat (Liquipedia: 25/0)",
+		test("D08", "Zergling costs 50 per pair (25 each, Liquipedia)",
 			zergling.mineral_cost == 50 && zergling.gas_cost == 0,
-			fmt("data=%d/%d, Liquipedia=25/0 - see __SC_DOMAIN_QUESTIONS.md C",
-				zergling.mineral_cost, zergling.gas_cost));
+			fmt("data=%d/%d", zergling.mineral_cost, zergling.gas_cost));
 	}
 	{
 		// Most buildings take frames to build, but four special types have no

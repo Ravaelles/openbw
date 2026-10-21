@@ -129,16 +129,18 @@ int main(int argc, char** argv) {
 	// [VERIFIED Liquipedia/Zergling]
 	test("I008", "Zergling hp is 35", f.ut(UnitTypes::Zerg_Zergling).hitpoints.integer_part() == 35,
 		fmt("%d", (int)f.ut(UnitTypes::Zerg_Zergling).hitpoints.integer_part()));
-	// [CONFLICT] Liquipedia says Nexus has 1500 hp
-	// (https://liquipedia.net/starcraft/Nexus); units.dat here loads 750.
-	// This asserts the GAME value so the discrepancy is visible every run, and
-	// it is recorded in __SC_DOMAIN_QUESTIONS.md section B. It is not
-	// "corrected" to the data value: a 2x factor smells like a units.dat
-	// variant or a shifted load, which matters far more than this one number.
-	test("I009", "Nexus hp is 1500 (Liquipedia; units.dat says 750)",
-		f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part() == 1500,
-		fmt("game=1500, data=%d - see __SC_DOMAIN_QUESTIONS.md B",
-			(int)f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part()));
+	// [VERIFIED Liquipedia/Nexus] The Nexus has 750 hit points AND 750 shields;
+	// the "1500 hp" often quoted is the total damage needed to destroy it.
+	// units.dat correctly holds 750 hp and 750 shield_points - earlier I read
+	// the 1500 figure as hp and called this a data conflict. It was not.
+	test("I009", "Nexus has 750 hp plus 750 shields (1500 total)",
+		f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part() == 750
+			&& f.ut(UnitTypes::Protoss_Nexus).shield_points == 750,
+		fmt("hp=%d shield=%d total=%d",
+			(int)f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part(),
+			f.ut(UnitTypes::Protoss_Nexus).shield_points,
+			(int)f.ut(UnitTypes::Protoss_Nexus).hitpoints.integer_part()
+				+ f.ut(UnitTypes::Protoss_Nexus).shield_points));
 	test("I010", "Nexus has 4 supply-ish size and no weapon",
 		f.ut(UnitTypes::Protoss_Nexus).ground_weapon == nullptr);
 	test("I011", "mineral field has no weapon", f.ut(UnitTypes::Resource_Mineral_Field).ground_weapon == nullptr);
