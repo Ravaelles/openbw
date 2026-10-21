@@ -94,18 +94,18 @@ int main(int argc, char** argv) {
 	test("O05", "Patrol order exists", f.has_order(Orders::Patrol));
 	test("O06", "Guard order exists", f.has_order(Orders::Guard));
 	test("O07", "Stop order exists", f.has_order(Orders::Stop));
-	test("O08", "Hold Position (StayInRange) order exists", f.has_order(Orders::StayInRange));
+	test("O08", "Hold Position exists as Orders::HoldPosition", f.has_order(Orders::HoldPosition));
 	// [ENGINE DATA] the sparse ids are what they are - pin them so a reorder fails
 	test("O09", "standard orders keep their documented ids",
 		(int)Orders::Stop == 1 && (int)Orders::Guard == 2 && (int)Orders::Move == 6
-		&& (int)Orders::AttackMove == 14 && (int)Orders::StayInRange == 21
+		&& (int)Orders::AttackMove == 14 && (int)Orders::HoldPosition == 107
 		&& (int)Orders::Patrol == 152,
 		fmt("stop %d guard %d move %d amove %d hold %d patrol %d",
 			(int)Orders::Stop, (int)Orders::Guard, (int)Orders::Move,
-			(int)Orders::AttackMove, (int)Orders::StayInRange, (int)Orders::Patrol));
+			(int)Orders::AttackMove, (int)Orders::HoldPosition, (int)Orders::Patrol));
 	// [ENGINE DATA] there is no Orders::Hold member - Hold Position is StayInRange
-	test("O10", "Hold Position is StayInRange, not a 'Hold' order",
-		f.has_order(Orders::StayInRange), "measured: Orders::StayInRange == 21");
+	test("O10", "HoldPosition and StayInRange are distinct orders",
+		(int)Orders::HoldPosition != (int)Orders::StayInRange);
 
 	// ---- Order flags (O11-O20) --------------------------------------------
 	{	// [ENGINE DATA] every move-like order can be interrupted by a new command
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
 		test("O29", "Stop is a valid order for mobile units", f.has_order(Orders::Stop));
 	}
 	{	// [ENGINE DATA] Hold Position exists under StayInRange and is usable
-		test("O30", "Hold Position can be looked up", f.has_order(Orders::StayInRange));
+		test("O30", "Hold Position can be looked up", f.has_order(Orders::HoldPosition));
 	}
 	{	// [ENGINE DATA] attack-move and patrol are distinct orders
 		test("O31", "attack-move and patrol are different orders",
@@ -328,7 +328,8 @@ int main(int argc, char** argv) {
 	{	// [ENGINE DATA] Patrol is the highest standard order id, so the enum is
 	// append-only in practice: new orders must not renumber it.
 		test("O43", "Patrol is the last of the standard orders",
-			(int)Orders::Patrol > (int)Orders::Nothing && (int)Orders::Patrol > (int)Orders::StayInRange);
+			(int)Orders::Patrol > (int)Orders::Nothing && (int)Orders::Patrol > (int)Orders::StayInRange
+			&& (int)Orders::Patrol > (int)Orders::HoldPosition);
 	}
 	{	// [ENGINE DATA] the engine continues to run after a Move order was assigned
 		bool ok = true;

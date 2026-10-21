@@ -308,3 +308,49 @@ compile gate catches it.
 
 **Suggested process addition:** run `tests/run.sh` (which builds everything)
 before any commit that touches `bwgame.h`.
+
+---
+
+## BUG-12 - `ComputerAI` aborts 9 of 10 real UMS maps on the first frame
+
+**Observed** by `tests/map_load_test.cpp` on ten extreme maps from
+`/sc-ai/UMS_MAPS/rav/protoss/` (5 largest, 5 smallest by file size):
+
+```
+ChokeSpartaDefenceB.scx   FAIL 60 frames: ComputerAI
+ProtossBase_v_Zerg.scx    FAIL 60 frames: ComputerAI
+ChokeSpartaDefenceD.scx   FAIL 60 frames: ComputerAI
+ChokeSpartaDefenceC.scx   FAIL 60 frames: ComputerAI
+ProtossBaseA_v_Zerg.scm   FAIL 60 frames: unknown ai script
+M&M_v_Cannons.scx         FAIL 60 frames: ComputerAI
+Drag_run.scm              FAIL 60 frames: ComputerAI
+Probe_run.scm             FAIL 60 frames: ComputerAI
+DragZeal_v_Zeal.scm       ok
+Goon_v_DT.scx             FAIL 60 frames: ComputerAI
+```
+
+**Loading itself succeeds** everywhere: measured 169, 148, 26, 24, 13, 10 units
+and 75, 4 triggers. Only the first simulated frame fails.
+
+**Cause:** `bwgame.h` has no computer-player implementation. When a slot is
+`controller_computer` (a map that intends the engine to drive an AI player, or
+any map loaded in MELEE mode), the code reaches
+`error("... ComputerAI ...")` during `next_frame()`.
+
+Also seen: `unknown ai script` for `ProtossBaseA_v_Zerg.scm` - action 15
+("AI script") with a script id the engine does not know. That is the same class
+of gap as BUG-5: an unsupported map feature aborts the whole match instead of
+being counted and logged.
+
+**Impact:** only true 1v1 UMS maps that mark every player as Occupied can run.
+The moment a map relies on a computer opponent - which most `*_v_*` maps in
+this corpus do - the engine cannot host it, even though the map, its units and
+its triggers all loaded correctly.
+
+**Suggested handling (not applied):** treat `controller_computer` like the
+unsupported-trigger path: log once, count it in state, and let the match run
+with the computer player idle, instead of calling `error()`. Measured evidence
+that everything else is fine is the load counts above.
+
+**Test status:** `map_load_test` keeps M5 red and prints the message, so the gap
+stays visible in every run.

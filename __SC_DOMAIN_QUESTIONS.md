@@ -166,6 +166,16 @@ Liquipedia writes the Zealot attack as `8x2`, but `units.dat` has damage 8 with
 C06 asserts the data (`8 damage, 1 bullet`) and records this here so the number
 is not "fixed" later.
 
+### RESOLVED: "Hold Position" vs "StayInRange"
+
+Hold Position is a real StarCraft command (hotkey H). Its enum member is
+`Orders::HoldPosition`, id **107**. `Orders::StayInRange` is id **21** and is a
+*different*, internal order (used for example by cloaking checks in
+`bwgame.h:12262`), not the player-facing command.
+
+My earlier order test asserted `StayInRange` was Hold Position and passed - a
+green test built on a wrong name. Corrected in O08/O09/O10.
+
 ### Unresolved: unit_size numbering
 
 `unit_size` is **1 = small, 2 = medium, 3 = large, 0 = special** (measured:
