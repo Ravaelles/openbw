@@ -19,6 +19,7 @@
 // some configurations, and dlsym() would then return nullptr and the loader
 // would fall back to the dummy module with no error beyond a log line.
 #include <BWAPI.h>
+#include <cstdio>
 #include <cstdlib>
 #include "UAlbertaBotModule.h"
 
@@ -40,11 +41,19 @@ namespace BWAPI {
 STEAMHAMMER_EXPORT void gameInit(BWAPI::Game* game) {
 	BWAPI::BroodwarPtr = game;
 
-	// The slot cannot be assigned here: GameImpl::switchToPlayer is a no-op
-	// until isInGame(), and gameInit runs before the match starts. The wrapper
-	// module below does it on the first onStart() instead. Measured: calling it
-	// here leaves self() null and Steamhammer crashes in
-	// ParseConfigFile -> self()->getRace().
+	// Slot selection belongs HERE, not in onStart(). GameImpl::switchToPlayer
+	// is a no-op once isInGame() is true, and it is true by the time onStart()
+	// runs (measured). In gameInit it is still false, so the call takes effect;
+	// the engine then keeps the choice because sync() honours module_slot_set.
+	if (game) {
+		if (const char* slot = std::getenv("STEAMHAMMER_SLOT")) {
+			char* end = nullptr;
+			long n = std::strtol(slot, &end, 10);
+			if (end && *end == '\0' && n >= 0 && n < 8) {
+				game->switchToPlayer(game->getPlayer((int)n));
+			}
+		}
+	}
 }
 
 // Why a wrapper at all:
@@ -65,13 +74,19 @@ public:
 	~SlotAssigningModule() override { delete inner_; }
 
 	void onStart() override {
-		if (const char* slot = std::getenv("STEAMHAMMER_SLOT")) {
-			char* end = nullptr;
-			long n = std::strtol(slot, &end, 10);
-			if (end && *end == '\0' && n >= 0 && n < 8) {
-				BWAPI::Broodwar->switchToPlayer(BWAPI::Broodwar->getPlayer((int)n));
-			}
+		// Diagnostic: which slot did we get, and does it own a base?
+		// Needed because "our base is unknown" can mean either "no slot" or
+		// "a slot with no starting base", and the two have different fixes.
+		{
+			BWAPI::Player self = BWAPI::Broodwar->self();
+			int units = self ? (int)self->getUnits().size() : -1;
+			std::fprintf(stderr, "steamhammer: slot=%d self=%p units=%d start=%d,%d\n",
+				self ? self->getID() : -1,
+				(void*)self, units,
+				self ? self->getStartLocation().x : -1,
+				self ? self->getStartLocation().y : -1);
 		}
+		// Slot already chosen in gameInit (switchToPlayer no-ops here).
 		inner_->onStart();
 	}
 	void onEnd(bool isWinner) override { inner_->onEnd(isWinner); }
